@@ -1,65 +1,132 @@
 import Image from "next/image";
+import Link from "next/link";
+import ThemeSwitch from "@/components/theme-switch";
+
+const USERS = ["@birdwatch", "@communitynotes", "@vercel", "@jack"];
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-zinc-100 py-12 text-zinc-900 transition-colors dark:bg-zinc-950 dark:text-zinc-100">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-14 px-6 sm:px-10 lg:px-16">
+        <div className="flex justify-end">
+          <ThemeSwitch />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+        <header className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <Link href="/" className="flex items-center gap-5">
             <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+              src="/favicon.svg"
+              alt="Birdseye logo"
+              width={44}
+              height={44}
+              priority
+              className="h-11 w-11"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+            <div className="flex flex-col justify-center">
+              <h1 className="font-slab text-4xl font-semibold leading-none tracking-tight text-zinc-800 dark:text-zinc-100">
+                Birdseye
+              </h1>
+            </div>
+          </Link>
+          <div className="flex flex-col gap-4 sm:items-end sm:justify-center sm:text-right">
+            <p className="max-w-xl text-base text-zinc-600 transition-colors dark:text-zinc-400">
+              Birdseye helps you explore patterns in your tweet history by
+              automatically clustering your tweets into topics. It&apos;s powered
+              by the{" "}
+              <a
+                href="https://www.community-archive.org/"
+                className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-400 transition-colors dark:text-zinc-100 dark:decoration-zinc-600 dark:hover:decoration-zinc-500"
+              >
+                Community Archive
+              </a>
+              .
+            </p>
+          </div>
+        </header>
+
+        <section className="rounded-4xl bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
+          <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
+            Key features
+          </h2>
+          <ul className="mt-6 grid gap-5 text-base text-zinc-600 transition-colors sm:grid-cols-2 dark:text-zinc-300">
+            <li className="flex items-stretch gap-4 rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
+              <span className="flex aspect-square h-full shrink-0 items-center justify-center text-3xl">
+                <span role="img" aria-hidden="true">
+                  📊
+                </span>
+              </span>
+              <span>Topics are sorted by date (newest first)</span>
+            </li>
+            <li className="flex items-stretch gap-4 rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
+              <span className="flex aspect-square h-full shrink-0 items-center justify-center text-3xl">
+                <span role="img" aria-hidden="true">
+                  🔍
+                </span>
+              </span>
+              <span>Each cluster shows stats, summaries, and yearly evolution</span>
+            </li>
+            <li className="flex items-stretch gap-4 rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
+              <span className="flex aspect-square h-full shrink-0 items-center justify-center text-3xl">
+                <span role="img" aria-hidden="true">
+                  📈
+                </span>
+              </span>
+              <span>Timeline charts help track topic engagement over time</span>
+            </li>
+            <li className="flex items-stretch gap-4 rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
+              <span className="flex aspect-square h-full shrink-0 items-center justify-center text-3xl">
+                <span role="img" aria-hidden="true">
+                  🧵
+                </span>
+              </span>
+              <span>View full threads and conversations within each topic</span>
+            </li>
+          </ul>
+          <p className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 transition-colors dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-200">
+            Note: While most clusters are meaningful, some (especially the largest ones) may be too
+            broad or noisy. The tool works best for exploration - try sorting by median date or likes
+            to find interesting patterns!
+          </p>
+        </section>
+
+        <section className="flex flex-col gap-6 rounded-4xl bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
+          <div>
+            <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
+              Select a User
+            </h2>
+            <p className="mt-2 text-sm text-zinc-600 transition-colors dark:text-zinc-400">
+              Choose a user to explore. Once you click Explore, Birdseye loads clusters, timelines, and
+              threads tailored to that account.
+            </p>
+          </div>
+          <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center">
+            <div className="relative flex flex-1 flex-col">
+              <select className="w-full appearance-none rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 pr-12 text-base text-zinc-900 transition-colors focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500 dark:focus:ring-zinc-600">
+                <option value="">Choose a user</option>
+                {USERS.map((user) => (
+                  <option key={user} value={user}>
+                    {user}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center">
+                <Image
+                  src="/dropdown.png"
+                  alt=""
+                  width={20}
+                  height={20}
+                  className="h-5 w-5 opacity-80 filter dark:invert dark:brightness-125 dark:opacity-90"
+                />
+              </span>
+            </div>
+            <button
+              type="button"
+              className="inline-flex items-center justify-center rounded-2xl bg-zinc-900 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            >
+              Explore
+            </button>
+          </div>
+        </section>
+      </div>
+    </main>
   );
 }

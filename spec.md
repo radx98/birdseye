@@ -6,7 +6,7 @@ Stack
 - Deployment on Vercel
 
 Other
-- Always use bun
+- Use bun
 - Don't switch between branches
 
 # Layout
