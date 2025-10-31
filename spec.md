@@ -1,17 +1,11 @@
-# General Instructions
+## General Instructions
 
-Stack
-- Next.js
-- Tailwind CSS
-- Deployment on Vercel
-
-Other
 - Use bun
 - Don't switch between branches
 
-# Layout
+## Layout
 
-## "{/public/favicon.svg} Birdseye"
+### "{/public/favicon.svg} Birdseye"
 
 "Birdseye helps you explore patterns in your tweet history by automatically clustering your tweets into topics. It's powered by the [Community Archive](https://www.community-archive.org/).
 

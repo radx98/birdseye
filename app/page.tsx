@@ -1,10 +1,17 @@
 import Image from "next/image";
 import Link from "next/link";
+import UserExplorer from "@/components/user-explorer";
 import ThemeSwitch from "@/components/theme-switch";
+import { listVolumeUsers } from "@/lib/modal-data";
 
-const USERS = ["@birdwatch", "@communitynotes", "@vercel", "@jack"];
+export default async function Home() {
+  let users: string[] = [];
+  try {
+    users = await listVolumeUsers();
+  } catch (error) {
+    console.error("Failed to load users from Modal volume.", error);
+  }
 
-export default function Home() {
   return (
     <main className="min-h-screen bg-zinc-100 py-12 text-zinc-900 transition-colors dark:bg-zinc-950 dark:text-zinc-100">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-14 px-6 sm:px-10 lg:px-16">
@@ -94,37 +101,11 @@ export default function Home() {
               Select a User
             </h2>
             <p className="mt-2 text-sm text-zinc-600 transition-colors dark:text-zinc-400">
-              Choose a user to explore. Once you click Explore, Birdseye loads clusters, timelines, and
+              Choose a user to explore. Once you click Expand, Birdseye loads clusters, timelines, and
               threads tailored to that account.
             </p>
           </div>
-          <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center">
-            <div className="relative flex flex-1 flex-col">
-              <select className="w-full appearance-none rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 pr-12 text-base text-zinc-900 transition-colors focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500 dark:focus:ring-zinc-600">
-                <option value="">Choose a user</option>
-                {USERS.map((user) => (
-                  <option key={user} value={user}>
-                    {user}
-                  </option>
-                ))}
-              </select>
-              <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center">
-                <Image
-                  src="/dropdown.png"
-                  alt=""
-                  width={20}
-                  height={20}
-                  className="h-5 w-5 opacity-80 filter dark:invert dark:brightness-125 dark:opacity-90"
-                />
-              </span>
-            </div>
-            <button
-              type="button"
-              className="inline-flex items-center justify-center rounded-2xl bg-zinc-900 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-            >
-              Explore
-            </button>
-          </div>
+          <UserExplorer users={users} />
         </section>
       </div>
     </main>

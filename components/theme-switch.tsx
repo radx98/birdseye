@@ -41,28 +41,29 @@ const applyTheme = (mode: ThemeMode) => {
   }
 };
 
+const resolveInitialMode = (): ThemeMode => {
+  if (typeof window === "undefined") {
+    return "system";
+  }
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (isThemeMode(stored)) {
+      return stored;
+    }
+    localStorage.setItem(STORAGE_KEY, "system");
+  } catch {
+    // ignore read/write errors
+  }
+  return "system";
+};
+
 const ThemeSwitch = () => {
-  const [mode, setMode] = useState<ThemeMode>("system");
-  const modeRef = useRef<ThemeMode>("system");
+  const initialMode = resolveInitialMode();
+  const [mode, setMode] = useState<ThemeMode>(initialMode);
+  const modeRef = useRef<ThemeMode>(initialMode);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (isThemeMode(stored)) {
-        setMode(stored);
-        modeRef.current = stored;
-        applyTheme(stored);
-      } else {
-        localStorage.setItem(STORAGE_KEY, "system");
-        applyTheme("system");
-      }
-    } catch (error) {
-      modeRef.current = "system";
-      setMode("system");
-      applyTheme("system");
-    }
 
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handleChange = () => {
@@ -70,6 +71,7 @@ const ThemeSwitch = () => {
         applyTheme("system");
       }
     };
+
     mediaQuery.addEventListener("change", handleChange);
     return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
@@ -80,7 +82,7 @@ const ThemeSwitch = () => {
     modeRef.current = mode;
     try {
       localStorage.setItem(STORAGE_KEY, mode);
-    } catch (error) {
+    } catch {
       // ignore write errors (e.g. private mode)
     }
     applyTheme(mode);
