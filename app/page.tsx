@@ -1,6 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ClustersSection, SelectUserPanel, UserExplorerProvider } from "@/components/user-explorer";
+import {
+  ClustersSection,
+  SelectUserPanel,
+  UserExplorerProvider,
+  YearlySummariesSection,
+  TweetsOverTimeSection,
+} from "@/components/user-explorer";
 import ThemeSwitch from "@/components/theme-switch";
 import { listVolumeUsers } from "@/lib/modal-data";
 
@@ -111,6 +117,8 @@ export default async function Home() {
             </section>
 
             <ClustersSection />
+            <YearlySummariesSection />
+            <TweetsOverTimeSection />
           </>
         </UserExplorerProvider>
       </div>

@@ -8,6 +8,11 @@ export type RelatedCluster = {
   name: string;
 };
 
+export type YearlySummary = {
+  period: string;
+  summary: string;
+};
+
 export type ClusterInfo = {
   id: string;
   name: string;
@@ -20,6 +25,7 @@ export type ClusterInfo = {
   tweetsPerMonthLabel: string;
   mostRepliedTo: ClusterReplyStat[];
   relatedClusters: RelatedCluster[];
+  yearlySummaries: YearlySummary[];
 };
 
 export type UserClusters = {

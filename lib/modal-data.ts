@@ -263,6 +263,26 @@ import os
 import sys
 from collections import defaultdict
 
+def normalize_yearly(entries):
+    bucket = []
+    if isinstance(entries, list):
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            period = item.get("period")
+            summary = item.get("summary")
+            if not isinstance(period, str):
+                period = ""
+            if not isinstance(summary, str):
+                summary = ""
+            if not period and not summary:
+                continue
+            bucket.append({
+                "period": period,
+                "summary": summary,
+            })
+    return bucket
+
 try:
     import pandas as pd
 except Exception:
@@ -280,6 +300,8 @@ if not os.path.isdir(user_path):
 hierarchy_path = os.path.join(user_path, "labeled_cluster_hierarchy.parquet")
 tweets_path = os.path.join(user_path, "clustered_tweets_df.parquet")
 groups_path = os.path.join(user_path, "group_results.json")
+ontology_path = os.path.join(user_path, "cluster_ontology_items.json")
+labels_path = os.path.join(user_path, "cluster_labels.json")
 
 if not os.path.exists(hierarchy_path) or not os.path.exists(tweets_path):
     print(json.dumps({"clusters": []}))
@@ -302,6 +324,55 @@ if hierarchy_df.empty:
 hierarchy_df["cluster_id"] = hierarchy_df["cluster_id"].astype(str)
 cluster_ids = set(hierarchy_df["cluster_id"].tolist())
 name_map = {row.cluster_id: (row.name if isinstance(row.name, str) else row.cluster_id) for row in hierarchy_df.itertuples()}
+
+yearly_map = {}
+
+if os.path.exists(ontology_path):
+    try:
+        with open(ontology_path, "r", encoding="utf-8") as handle:
+            ontology_data = json.load(handle)
+        if isinstance(ontology_data, dict):
+            for key, value in ontology_data.items():
+                entry = value if isinstance(value, dict) else {}
+                cluster_key = entry.get("cluster_id")
+                if isinstance(cluster_key, str) and cluster_key:
+                    cluster_key_str = cluster_key
+                else:
+                    cluster_key_str = str(key)
+                if not cluster_key_str or cluster_key_str not in cluster_ids:
+                    continue
+                container = entry.get("ontology_items") if isinstance(entry.get("ontology_items"), dict) else entry
+                raw_list = container.get("yearly_summaries")
+                bucket = normalize_yearly(raw_list)
+                if bucket:
+                    yearly_map[cluster_key_str] = bucket
+    except Exception:
+        yearly_map = {}
+
+if not yearly_map and os.path.exists(labels_path):
+    try:
+        with open(labels_path, "r", encoding="utf-8") as handle:
+            label_data = json.load(handle)
+        if isinstance(label_data, dict):
+            for key, value in label_data.items():
+                entry = value if isinstance(value, dict) else {}
+                cluster_key = entry.get("cluster_id")
+                if isinstance(cluster_key, str) and cluster_key:
+                    cluster_key_str = cluster_key
+                else:
+                    cluster_key_str = str(key)
+                if (
+                    not cluster_key_str
+                    or cluster_key_str in yearly_map
+                    or cluster_key_str not in cluster_ids
+                ):
+                    continue
+                raw_list = entry.get("yearly_summaries")
+                bucket = normalize_yearly(raw_list)
+                if bucket:
+                    yearly_map[cluster_key_str] = bucket
+    except Exception:
+        pass
 
 tweet_columns = ["cluster", "favorite_count", "created_at", "reply_to_username"]
 try:
@@ -328,6 +399,7 @@ if tweets_df.empty:
             "tweets_per_month": "placeholder",
             "most_replied_to": [],
             "related_clusters": [],
+            "yearly_summaries": yearly_map.get(row.cluster_id, []),
         })
 
     clusters.sort(key=lambda item: item["name"])
@@ -436,6 +508,7 @@ for row in hierarchy_df.itertuples():
         "tweets_per_month": "placeholder",
         "most_replied_to": reply_map.get(cluster_id, []),
         "related_clusters": related_list,
+        "yearly_summaries": yearly_map.get(cluster_id, []),
     })
 
 clusters.sort(
@@ -522,6 +595,22 @@ print(json.dumps({"clusters": clusters}))
       const item = entry as Record<string, unknown>;
       const repliesRaw = Array.isArray(item.most_replied_to) ? item.most_replied_to : [];
       const relatedRaw = Array.isArray(item.related_clusters) ? item.related_clusters : [];
+      const yearlyRaw = Array.isArray(item.yearly_summaries) ? item.yearly_summaries : [];
+
+      const yearlySummaries = yearlyRaw
+        .map((yearEntry) => {
+          const recordYear = yearEntry as Record<string, unknown>;
+          const period = sanitizeString(recordYear.period);
+          const summaryText = sanitizeString(recordYear.summary);
+          if (!period && !summaryText) {
+            return null;
+          }
+          return {
+            period: period || "Unknown period",
+            summary: summaryText,
+          };
+        })
+        .filter((entry): entry is { period: string; summary: string } => entry !== null);
 
       return {
         id: sanitizeString(item.id),
@@ -551,6 +640,7 @@ print(json.dumps({"clusters": clusters}))
             };
           })
           .filter((related) => related.id),
+        yearlySummaries,
       };
     });
 
