@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import UserExplorer from "@/components/user-explorer";
+import { ClustersSection, SelectUserPanel, UserExplorerProvider } from "@/components/user-explorer";
 import ThemeSwitch from "@/components/theme-switch";
 import { listVolumeUsers } from "@/lib/modal-data";
 
@@ -95,18 +95,24 @@ export default async function Home() {
           </p>
         </section>
 
-        <section className="flex flex-col gap-6 rounded-4xl bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
-          <div>
-            <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
-              Select a User
-            </h2>
-            <p className="mt-2 text-sm text-zinc-600 transition-colors dark:text-zinc-400">
-              Choose a user to explore. Once you click Expand, Birdseye loads clusters, timelines, and
-              threads tailored to that account.
-            </p>
-          </div>
-          <UserExplorer users={users} />
-        </section>
+        <UserExplorerProvider users={users}>
+          <>
+            <section className="flex flex-col gap-6 rounded-4xl bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
+              <div>
+                <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
+                  Select a User
+                </h2>
+                <p className="mt-2 text-sm text-zinc-600 transition-colors dark:text-zinc-400">
+                  Choose a user to explore. Once you click Explore, Birdseye loads clusters, timelines, and
+                  threads tailored to that account.
+                </p>
+              </div>
+              <SelectUserPanel />
+            </section>
+
+            <ClustersSection />
+          </>
+        </UserExplorerProvider>
       </div>
     </main>
   );
