@@ -3,6 +3,12 @@
 - Use bun
 - Don't switch between branches
 
+### Data source
+
+Data is fetched from Modal. MODAL_TOKEN_ID and MODAL_TOKEN_SECRET are in the ".env" file. The fetch algorythm is already implemented for several elements on the page, which can be used as an example.
+
+Data sample can be found in "data_sample" folder. Don't ever use it in the code, it's gonna be deleted later. It is there just to show the structure of the Modal volume that the data should be fetched from. There is also a detailed map of the data in the Modal volume in spec_data_map.md. The volume's name is 'twitter-archive-data' and it contains the saeme two user folders, 'exgenesis' and 'romeostevens76' in its root. Later there are going to be more users. If any data is missing the page should show a corresponding message.
+
 ## Layout
 
 ### "{/public/favicon.svg} Birdseye"
@@ -38,27 +44,26 @@ Choose a user to explore
 
 ### Clusters
 
-"Hide low quality clusters" switch with "i" icon next to it showing popup "Filter out clusters marked as low quality by the AI"
-
 Infobox "⚡ Clusters are automatically sorted by recency. Some (especially the largest ones) may be too broad or noisy"
 
-Table of clusters. Columns:
+"Hide low quality clusters" switch on the right above the table with "i" icon next to it showing popup "Filter out clusters marked as low quality by the AI"
+
+Scrollable table of clusters with the following columns. It's height is 75% of it's width.
 - Name
-- Number of Tweets
-- Median Likes
-- Total Likes
-- Median Date
-- Tweets per Month
+- Number of Tweets [number]
+- Median Likes [number]
+- Total Likes [number]
+- Median Date [date]
+- Tweets per Month [chart]
 
-Selected cluster info
-- Number of Tweets
-- Total Likes
-- Median Date
-- Summary "..."
-
-Most replied to: list of users with number of replies in brackets
-
-Related Clusters: list of related clusters
+Three blocks in a row that show information on the cluster selected in the table.
+1. Selected Cluster (takes 50% of horizontal space)
+    - Number of Tweets
+    - Total Likes
+    - Median Date
+    - Summary "..."
+2. Most replied to: list of users with number of replies in brackets (takes 25% of horizontal space)
+3. Related Clusters: list of related clusters (takes 25% of horizontal space)
 
 ### Yearly summaries
 
