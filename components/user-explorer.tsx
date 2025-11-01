@@ -450,14 +450,48 @@ export const ClustersSection = () => {
     hasAvailableClusters,
   } = useUserExplorer();
 
+  const hasClusterResults = Boolean(clustersData && clustersData.clusters.length > 0);
+
   if (!summary && !clustersLoading) {
     return null;
   }
 
   return (
     <section className="flex flex-col gap-6 rounded-4xl bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
-      <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">Clusters</h2>
+        {clustersData && (
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={toggleHideLowQuality}
+              aria-pressed={hideLowQuality}
+              disabled={!hasClusterResults}
+              className="inline-flex items-center gap-3 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200 dark:hover:border-zinc-600"
+            >
+              <span
+                className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${
+                  hideLowQuality ? "bg-zinc-900 dark:bg-zinc-100" : "bg-zinc-300 dark:bg-zinc-600"
+                }`}
+              >
+                <span
+                  className={`h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                    hideLowQuality ? "translate-x-5" : "translate-x-1"
+                  }`}
+                />
+              </span>
+              Hide low quality clusters
+            </button>
+            <button
+              type="button"
+              title="Filter out clusters marked as low quality by the AI"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 text-sm font-semibold text-zinc-600 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800/70"
+              aria-label="Filter help"
+            >
+              i
+            </button>
+          </div>
+        )}
       </div>
 
       {clustersError && (
@@ -477,43 +511,11 @@ export const ClustersSection = () => {
 
       {clustersData && !clustersLoading && (
         <>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 transition-colors dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-200">
-              <span role="img" aria-hidden="true" className="mr-2">
-                ⚡
-              </span>
-              Clusters are automatically sorted by recency. Some (especially the largest ones) may be too broad or
-              noisy.
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={toggleHideLowQuality}
-                aria-pressed={hideLowQuality}
-                className="inline-flex items-center gap-3 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200 dark:hover:border-zinc-600"
-              >
-                <span
-                  className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${
-                    hideLowQuality ? "bg-zinc-900 dark:bg-zinc-100" : "bg-zinc-300 dark:bg-zinc-600"
-                  }`}
-                >
-                  <span
-                    className={`h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                      hideLowQuality ? "translate-x-5" : "translate-x-1"
-                    }`}
-                  />
-                </span>
-                Hide low quality clusters
-              </button>
-              <button
-                type="button"
-                title="Filter out clusters marked as low quality by the AI"
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 text-sm font-semibold text-zinc-600 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800/70"
-                aria-label="Filter help"
-              >
-                i
-              </button>
-            </div>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 transition-colors dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-200">
+            <span role="img" aria-hidden="true" className="mr-2">
+              ⚡
+            </span>
+            Clusters are automatically sorted by recency. Some (especially the largest ones) may be too broad or noisy.
           </div>
 
           <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-4 transition-colors dark:border-zinc-700 dark:bg-zinc-900/50">
@@ -642,6 +644,135 @@ export const ClustersSection = () => {
             </div>
           )}
         </>
+      )}
+    </section>
+  );
+};
+
+export const YearlySummariesSection = () => {
+  const { summary, clustersLoading, selectedCluster, hasAvailableClusters } = useUserExplorer();
+  const [activeIndexes, setActiveIndexes] = useState<Record<string, number>>({});
+
+  if (!summary) {
+    return null;
+  }
+
+  const clusterId = selectedCluster?.id ?? null;
+  const yearlySummaries = selectedCluster?.yearlySummaries ?? [];
+  const activeIndex = clusterId ? activeIndexes[clusterId] ?? 0 : 0;
+  const hasEntries = yearlySummaries.length > 0;
+  const showLoading = clustersLoading && !hasAvailableClusters;
+
+  let body: ReactNode;
+
+  if (showLoading) {
+    body = (
+      <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300">
+        <span className="inline-flex items-center gap-2">
+          <span className="h-3 w-3 animate-ping rounded-full bg-zinc-400 dark:bg-zinc-500" aria-hidden="true" />
+          Loading yearly summaries…
+        </span>
+      </div>
+    );
+  } else if (!hasAvailableClusters || !selectedCluster) {
+    body = (
+      <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300">
+        Select a cluster to view its yearly evolution.
+      </div>
+    );
+  } else if (!hasEntries) {
+    body = (
+      <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300">
+        No yearly summaries are available for this cluster.
+      </div>
+    );
+  } else {
+    const safeIndex = Math.min(activeIndex, yearlySummaries.length - 1);
+    const activeEntry = yearlySummaries[safeIndex];
+    const summaryText = activeEntry.summary || "No summary available for this period.";
+
+    body = (
+      <div className="flex flex-col gap-5">
+        <div className="flex gap-3 overflow-x-auto rounded-2xl border border-zinc-200 bg-zinc-50 p-2 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60">
+          {yearlySummaries.map((entry, index) => {
+            const isActive = index === safeIndex;
+            return (
+              <button
+                key={`${entry.period}-${index}`}
+                type="button"
+                onClick={() => {
+                  if (!clusterId) return;
+                  setActiveIndexes((prev) => {
+                    if (prev[clusterId] === index) {
+                      return prev;
+                    }
+                    return { ...prev, [clusterId]: index };
+                  });
+                }}
+                className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900"
+                    : "bg-white text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                }`}
+              >
+                {entry.period}
+              </button>
+            );
+          })}
+        </div>
+        <div className="rounded-3xl border border-zinc-200 bg-white p-6 transition-colors dark:border-zinc-700 dark:bg-zinc-900">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-300">
+            {activeEntry.period}
+          </h3>
+          <p className="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-300">{summaryText}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <section className="flex flex-col gap-4 rounded-4xl bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
+      <div>
+        <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
+          Yearly summaries
+        </h2>
+      </div>
+      {body}
+    </section>
+  );
+};
+
+export const TweetsOverTimeSection = () => {
+  const { summary, clustersLoading } = useUserExplorer();
+
+  if (!summary) {
+    return null;
+  }
+
+  return (
+    <section className="flex flex-col gap-5 rounded-4xl bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
+      <div>
+        <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
+          Tweets over time
+        </h2>
+      </div>
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 transition-colors dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-200">
+        <span role="img" aria-hidden="true" className="mr-2">
+          📈
+        </span>
+        Drag horizontally on the graph to filter tweets in the right column.
+      </div>
+      {clustersLoading ? (
+        <div className="flex items-center justify-center rounded-3xl border border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300">
+          <span className="inline-flex items-center gap-2">
+            <span className="h-3 w-3 animate-ping rounded-full bg-zinc-400 dark:bg-zinc-500" aria-hidden="true" />
+            Loading timeline data…
+          </span>
+        </div>
+      ) : (
+        <div className="flex min-h-[16rem] items-center justify-center rounded-3xl border border-dashed border-zinc-300 bg-zinc-50/50 text-sm text-zinc-600 transition-colors dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-300">
+          Timeline chart placeholder (data coming soon).
+        </div>
       )}
     </section>
   );

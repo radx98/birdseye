@@ -67,8 +67,8 @@ Three blocks in a row that show information on the cluster selected in the table
 
 ### Yearly summaries
 
-- Year selector
-- Year summary
+- Year selector (tabs)
+- Summary of the selected year
 
 ### Tweets over time
 
