@@ -73,7 +73,7 @@ const ensurePatchedPickleReader = () => {
     const view = this._dataView;
     const lower = BigInt(view.getUint32(position, true));
     const upper = BigInt(view.getUint32(position + 4, true));
-    const combined = (upper << 32n) + lower;
+    const combined = (upper << BigInt(32)) + lower;
     if (combined <= BigInt(Number.MAX_SAFE_INTEGER)) {
       return Number(combined);
     }
