@@ -1,0 +1,1231 @@
+import { Buffer } from "node:buffer";
+import { Readable } from "node:stream";
+import { GetObjectCommand, ListBucketsCommand, ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
+import { BufferReader, Parser as PickleParser } from "pickleparser";
+import type { ClusterOntology, UserClusters } from "@/types/cluster";
+import type { ThreadEntry, ThreadTweet, UserThreads } from "@/types/thread";
+import type { UserSummary } from "@/types/user";
+
+const ACCESS_KEY_ID = process.env.aws_access_key_id ?? process.env.AWS_ACCESS_KEY_ID;
+const SECRET_ACCESS_KEY =
+  process.env.aws_secret_access_key ?? process.env.AWS_SECRET_ACCESS_KEY;
+const ENDPOINT_URL = process.env.endpoint_url ?? process.env.AWS_ENDPOINT_URL;
+const REGION = process.env.region ?? process.env.AWS_REGION ?? "us-east-1";
+const BUCKET =
+  process.env.supabase_bucket ??
+  process.env.supabase_s3_bucket ??
+  process.env.AWS_BUCKET ??
+  process.env.S3_BUCKET;
+
+if (!ACCESS_KEY_ID || !SECRET_ACCESS_KEY || !ENDPOINT_URL) {
+  throw new Error(
+    "Missing Supabase S3 configuration. Ensure aws_access_key_id, aws_secret_access_key, and endpoint_url are set.",
+  );
+}
+
+const s3Client = new S3Client({
+  credentials: {
+    accessKeyId: ACCESS_KEY_ID,
+    secretAccessKey: SECRET_ACCESS_KEY,
+  },
+  endpoint: ENDPOINT_URL,
+  forcePathStyle: true,
+  region: REGION,
+});
+
+const objectCache = new Map<string, Promise<Buffer | null>>();
+
+let resolvedBucketPromise: Promise<string> | null = BUCKET ? Promise.resolve(BUCKET) : null;
+
+type ParquetModule = typeof import("parquet-wasm/bundler");
+type ArrowModule = typeof import("apache-arrow");
+
+let parquetEnvironmentPromise: Promise<{ parquet: ParquetModule; arrow: ArrowModule }> | null =
+  null;
+
+const loadParquetEnvironment = async () => {
+  if (!parquetEnvironmentPromise) {
+    parquetEnvironmentPromise = Promise.all([
+      import("parquet-wasm/bundler") as Promise<ParquetModule>,
+      import("apache-arrow") as Promise<ArrowModule>,
+    ]).then(([parquet, arrow]) => ({ parquet, arrow }));
+  }
+  return parquetEnvironmentPromise;
+};
+
+type MutableBufferReader = BufferReader & {
+  _dataView: DataView;
+  _position: number;
+  skip: (offset: number) => void;
+};
+
+let pickleReaderPatched = false;
+
+const ensurePatchedPickleReader = () => {
+  if (pickleReaderPatched) {
+    return;
+  }
+  const prototype = BufferReader.prototype as MutableBufferReader;
+  // Replace the uint64 reader to avoid precision-loss warnings and return BigInt when needed.
+  (prototype as MutableBufferReader).uint64 = function uint64Patched(this: MutableBufferReader) {
+    const position = this._position;
+    this.skip(8);
+    const view = this._dataView;
+    const lower = BigInt(view.getUint32(position, true));
+    const upper = BigInt(view.getUint32(position + 4, true));
+    const combined = (upper << 32n) + lower;
+    if (combined <= BigInt(Number.MAX_SAFE_INTEGER)) {
+      return Number(combined);
+    }
+    return combined;
+  } as MutableBufferReader["uint64"];
+
+  pickleReaderPatched = true;
+};
+
+const getBucketName = async (): Promise<string> => {
+  if (resolvedBucketPromise) {
+    return resolvedBucketPromise;
+  }
+
+  resolvedBucketPromise = (async () => {
+    try {
+      const response = await s3Client.send(new ListBucketsCommand({}));
+      const buckets = response.Buckets ?? [];
+      const candidate = buckets.find((bucket) => bucket.Name && bucket.Name.trim());
+      if (!candidate || !candidate.Name) {
+        throw new Error("Supabase bucket not found via ListBuckets.");
+      }
+      return candidate.Name;
+    } catch (error) {
+      resolvedBucketPromise = null;
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Unable to resolve Supabase bucket name automatically. Set supabase_bucket (or equivalent) in the environment. (Reason: ${reason})`,
+      );
+    }
+  })();
+
+  return resolvedBucketPromise;
+};
+
+const normalizeUsername = (username: string) => username.replace(/^@/, "").trim().toLowerCase();
+
+const streamToBuffer = async (body: unknown): Promise<Buffer> => {
+  if (!body) {
+    return Buffer.alloc(0);
+  }
+  if (Buffer.isBuffer(body)) {
+    return body;
+  }
+  if (body instanceof Uint8Array) {
+    return Buffer.from(body);
+  }
+  if (typeof body === "string") {
+    return Buffer.from(body);
+  }
+  if (body instanceof Readable) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of body) {
+      if (typeof chunk === "string") {
+        chunks.push(Buffer.from(chunk));
+      } else {
+        chunks.push(Buffer.from(chunk));
+      }
+    }
+    return Buffer.concat(chunks);
+  }
+  const transformer = body as { transformToByteArray?: () => Promise<Uint8Array>; arrayBuffer?: () => Promise<ArrayBuffer> };
+  if (typeof transformer.transformToByteArray === "function") {
+    const array = await transformer.transformToByteArray();
+    return Buffer.from(array);
+  }
+  if (typeof transformer.arrayBuffer === "function") {
+    const arrayBuffer = await transformer.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+  throw new Error("Unsupported S3 response body type.");
+};
+
+const isNotFoundError = (error: unknown) => {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const candidate = error as { name?: string; Code?: string; $metadata?: { httpStatusCode?: number } };
+  if (candidate.$metadata?.httpStatusCode === 404) {
+    return true;
+  }
+  const code = candidate.Code ?? candidate.name;
+  return code === "NotFound" || code === "NoSuchKey";
+};
+
+const fetchObjectBuffer = async (key: string): Promise<Buffer | null> => {
+  const bucket = await getBucketName();
+  const cacheKey = `${bucket}:${key}`;
+  const cached = objectCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = (async () => {
+    try {
+      const result = await s3Client.send(
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: key,
+        }),
+      );
+      if (!result.Body) {
+        return null;
+      }
+      return streamToBuffer(result.Body);
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return null;
+      }
+      throw error;
+    }
+  })();
+
+  objectCache.set(cacheKey, promise);
+  try {
+    const buffer = await promise;
+    if (buffer === null) {
+      objectCache.delete(cacheKey);
+    }
+    return buffer;
+  } catch (error) {
+    objectCache.delete(cacheKey);
+    throw error;
+  }
+};
+
+const readJsonFile = async <T>(username: string, filename: string): Promise<T | null> => {
+  const key = `${username}/${filename}`;
+  const buffer = await fetchObjectBuffer(key);
+  if (!buffer) {
+    return null;
+  }
+  try {
+    return JSON.parse(buffer.toString("utf8")) as T;
+  } catch (error) {
+    console.warn(`[storage][json][${key}]`, error);
+    return null;
+  }
+};
+
+const normalizeArrowValue = (value: unknown): unknown => {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.toISOString() : null;
+  }
+  if (ArrayBuffer.isView(value)) {
+    return Array.from(value as ArrayLike<number>);
+  }
+  return value;
+};
+
+const readParquetRecords = async (
+  username: string,
+  filename: string,
+  columns?: string[],
+): Promise<Record<string, unknown>[]> => {
+  const key = `${username}/${filename}`;
+  const buffer = await fetchObjectBuffer(key);
+  if (!buffer) {
+    return [];
+  }
+
+  const { parquet, arrow } = await loadParquetEnvironment();
+
+  let table;
+  try {
+    table = parquet.readParquet(buffer);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read Parquet file "${key}": ${message}`);
+  }
+
+  const ipcStream = table.intoIPCStream();
+  const arrowTable = arrow.tableFromIPC(ipcStream);
+
+  const targetFields =
+    columns && columns.length > 0
+      ? columns
+      : arrowTable.schema.fields.map((field) => field.name);
+
+  const rows: Record<string, unknown>[] = [];
+
+  for (const row of arrowTable as Iterable<Record<string, unknown>>) {
+    const record: Record<string, unknown> = {};
+    for (const fieldName of targetFields) {
+      record[fieldName] = normalizeArrowValue(row[fieldName]);
+    }
+    rows.push(record);
+  }
+
+  return rows;
+};
+
+const convertPickleValue = (value: unknown, seen: WeakMap<object, unknown>): unknown => {
+  if (!value) {
+    return value;
+  }
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value !== "object") {
+    return value;
+  }
+
+  if (seen.has(value)) {
+    return seen.get(value);
+  }
+
+  if (value instanceof Map) {
+    const target: Record<string, unknown> = {};
+    seen.set(value, target);
+    for (const [rawKey, rawVal] of value.entries()) {
+      const key = typeof rawKey === "string" ? rawKey : String(rawKey);
+      target[key] = convertPickleValue(rawVal, seen);
+    }
+    return target;
+  }
+
+  if (Array.isArray(value)) {
+    const list: unknown[] = [];
+    seen.set(value, list);
+    for (const entry of value) {
+      list.push(convertPickleValue(entry, seen));
+    }
+    return list;
+  }
+
+  const source = value as Record<string, unknown>;
+  const copy: Record<string, unknown> = {};
+  seen.set(value, copy);
+  for (const [key, rawVal] of Object.entries(source)) {
+    copy[key] = convertPickleValue(rawVal, seen);
+  }
+  return copy;
+};
+
+const readPickleFile = async (username: string, filename: string): Promise<unknown> => {
+  const key = `${username}/${filename}`;
+  const buffer = await fetchObjectBuffer(key);
+  if (!buffer) {
+    return null;
+  }
+  ensurePatchedPickleReader();
+  try {
+    const parser = new PickleParser();
+    const parsed = parser.parse(buffer);
+    return convertPickleValue(parsed, new WeakMap());
+  } catch (error) {
+    console.warn(`[storage][pickle][${key}]`, error);
+    return null;
+  }
+};
+
+const sanitizeString = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  return "";
+};
+
+const sanitizeNumber = (value: unknown): number => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "bigint") {
+    if (value <= BigInt(Number.MAX_SAFE_INTEGER) && value >= BigInt(Number.MIN_SAFE_INTEGER)) {
+      return Number(value);
+    }
+    return Number.MAX_SAFE_INTEGER;
+  }
+  if (typeof value === "string") {
+    const numeric = Number(value.replace(/,/g, ""));
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+  }
+  return 0;
+};
+
+const sanitizeBoolean = (value: unknown): boolean => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "1" || normalized === "true";
+  }
+  return false;
+};
+
+const sanitizeStringArray = (value: unknown, limit = 0): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const results: string[] = [];
+  for (const entry of value) {
+    const text = sanitizeString(entry);
+    if (!text) {
+      continue;
+    }
+    results.push(text);
+    if (limit > 0 && results.length >= limit) {
+      break;
+    }
+  }
+  return results;
+};
+
+const medianNumber = (values: number[]): number => {
+  if (!values.length) {
+    return 0;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  return sorted[mid];
+};
+
+const medianDateIso = (timestamps: number[]): string | null => {
+  if (!timestamps.length) {
+    return null;
+  }
+  const sorted = [...timestamps].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted[mid];
+  if (!Number.isFinite(median)) {
+    return null;
+  }
+  return new Date(median).toISOString();
+};
+
+const normalizeOntology = (value: unknown): ClusterOntology => {
+  const fallback: ClusterOntology = {
+    entities: [],
+    beliefsAndValues: [],
+    goals: [],
+    socialRelationships: [],
+    moodsAndEmotionalTones: [],
+    keyConcepts: [],
+  };
+  if (!value || typeof value !== "object") {
+    return fallback;
+  }
+  const source = value as Record<string, unknown>;
+
+  const slice = <T>(
+    raw: unknown,
+    mapper: (entry: Record<string, unknown>) => T | null,
+  ): T[] => {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    const bucket: T[] = [];
+    for (const entry of raw) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const mapped = mapper(entry as Record<string, unknown>);
+      if (mapped) {
+        bucket.push(mapped);
+      }
+      if (bucket.length >= 4) {
+        break;
+      }
+    }
+    return bucket;
+  };
+
+  return {
+    entities: slice(source["entities"], (entry) => {
+      const name = sanitizeString(entry["name"]);
+      const description = sanitizeString(entry["description"]);
+      if (!name && !description) {
+        return null;
+      }
+      return {
+        id: sanitizeString(entry["id"]),
+        name,
+        description,
+        tweetReferences: sanitizeStringArray(entry["tweet_references"]),
+      };
+    }),
+    beliefsAndValues: slice(source["beliefs_and_values"], (entry) => {
+      const belief = sanitizeString(entry["belief"]);
+      const description = sanitizeString(entry["description"]);
+      if (!belief && !description) {
+        return null;
+      }
+      return {
+        id: sanitizeString(entry["id"]),
+        belief,
+        description,
+        tweetReferences: sanitizeStringArray(entry["tweet_references"]),
+      };
+    }),
+    goals: slice(source["goals"], (entry) => {
+      const goal = sanitizeString(entry["goal"]);
+      const description = sanitizeString(entry["description"]);
+      if (!goal && !description) {
+        return null;
+      }
+      return {
+        id: sanitizeString(entry["id"]),
+        goal,
+        description,
+        tweetReferences: sanitizeStringArray(entry["tweet_references"]),
+      };
+    }),
+    socialRelationships: slice(source["social_relationships"], (entry) => {
+      const username = sanitizeString(entry["username"]);
+      const interactionType = sanitizeString(entry["interaction_type"]);
+      if (!username && !interactionType) {
+        return null;
+      }
+      return {
+        id: sanitizeString(entry["id"]),
+        username,
+        interactionType,
+        tweetReferences: sanitizeStringArray(entry["tweet_references"]),
+      };
+    }),
+    moodsAndEmotionalTones: slice(source["moods_and_emotional_tones"], (entry) => {
+      const mood = sanitizeString(entry["mood"]);
+      const description = sanitizeString(entry["description"]);
+      if (!mood && !description) {
+        return null;
+      }
+      return {
+        id: sanitizeString(entry["id"]),
+        mood,
+        description,
+        tweetReferences: sanitizeStringArray(entry["tweet_references"]),
+      };
+    }),
+    keyConcepts: slice(source["key_concepts_and_ideas"], (entry) => {
+      const concept = sanitizeString(entry["concept"]);
+      const description = sanitizeString(entry["description"]);
+      if (!concept && !description) {
+        return null;
+      }
+      return {
+        id: sanitizeString(entry["id"]),
+        concept,
+        description,
+        tweetReferences: sanitizeStringArray(entry["tweet_references"]),
+      };
+    }),
+  };
+};
+
+const normalizeYearlySummaries = (value: unknown): { period: string; summary: string }[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const bucket: { period: string; summary: string }[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const period = sanitizeString(record["period"]);
+    const summary = sanitizeString(record["summary"]);
+    if (!period && !summary) {
+      continue;
+    }
+    bucket.push({ period, summary });
+  }
+  return bucket;
+};
+
+const ensureUserExists = async (username: string): Promise<boolean> => {
+  const sentinels = [
+    "labeled_cluster_hierarchy.parquet",
+    "clustered_tweets_df.parquet",
+    "cluster_ontology_items.json",
+  ];
+
+  for (const sentinel of sentinels) {
+    const key = `${username}/${sentinel}`;
+    const buffer = await fetchObjectBuffer(key);
+    if (buffer) {
+      const bucket = await getBucketName();
+      const cacheKey = `${bucket}:${key}`;
+      objectCache.delete(cacheKey);
+      objectCache.set(cacheKey, Promise.resolve(buffer));
+      return true;
+    }
+  }
+
+  return false;
+};
+
+export const listUsers = async (): Promise<string[]> => {
+  const bucket = await getBucketName();
+  const users = new Set<string>();
+  let continuationToken: string | undefined;
+
+  do {
+    const response = await s3Client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Delimiter: "/",
+        ContinuationToken: continuationToken,
+        MaxKeys: 1000,
+      }),
+    );
+
+    const prefixes = response.CommonPrefixes ?? [];
+    for (const prefix of prefixes) {
+      const raw = prefix.Prefix ?? "";
+      const name = raw.endsWith("/") ? raw.slice(0, -1) : raw;
+      if (!name || name.startsWith(".")) {
+        continue;
+      }
+      users.add(name);
+    }
+
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return Array.from(users).sort((a, b) => a.localeCompare(b));
+};
+
+export const getUserSummary = async (inputUsername: string): Promise<UserSummary | null> => {
+  const username = normalizeUsername(inputUsername);
+  if (!username) {
+    return null;
+  }
+
+  const exists = await ensureUserExists(username);
+  if (!exists) {
+    return null;
+  }
+
+  const groupData = await readJsonFile<Record<string, unknown>>(username, "group_results.json");
+  const params = await readJsonFile<Record<string, unknown>>(username, "clustering_params.json");
+  const tweetsRows = await readParquetRecords(username, "clustered_tweets_df.parquet", [
+    "account_id",
+    "favorite_count",
+    "reply_to_user_id",
+  ]);
+
+  let description = "";
+  if (groupData && typeof groupData === "object") {
+    const summary = sanitizeString((groupData as Record<string, unknown>)["overall_summary"]);
+    description = summary.replace(/\s+/g, " ").trim();
+  }
+
+  let clusters = 0;
+  if (params && typeof params === "object") {
+    clusters = Math.max(0, Math.round(sanitizeNumber((params as Record<string, unknown>)["n_clusters"])));
+  }
+
+  const accountCounts = new Map<string, number>();
+  const followingIds = new Set<string>();
+  const followerIds = new Set<string>();
+  let likes = 0;
+  let tweets = 0;
+
+  for (const row of tweetsRows) {
+    const accountId = sanitizeString(row["account_id"]);
+    if (accountId) {
+      accountCounts.set(accountId, (accountCounts.get(accountId) ?? 0) + 1);
+    }
+  }
+
+  let primaryAccount = "";
+  for (const [accountId, count] of accountCounts.entries()) {
+    if (!primaryAccount || count > (accountCounts.get(primaryAccount) ?? 0)) {
+      primaryAccount = accountId;
+    }
+  }
+
+  if (primaryAccount) {
+    for (const row of tweetsRows) {
+      const accountId = sanitizeString(row["account_id"]);
+      const replyTo = sanitizeString(row["reply_to_user_id"]);
+      const favoriteCount = sanitizeNumber(row["favorite_count"]);
+
+      if (accountId === primaryAccount) {
+        tweets += 1;
+        likes += favoriteCount;
+        if (replyTo && replyTo !== primaryAccount) {
+          followingIds.add(replyTo);
+        }
+      } else if (replyTo === primaryAccount && accountId) {
+        followerIds.add(accountId);
+      }
+    }
+  }
+
+  if (tweets === 0) {
+    const tweetMap = await readJsonFile<Record<string, Record<string, string>>>(
+      username,
+      "local_tweet_id_maps.json",
+    );
+    if (tweetMap && typeof tweetMap === "object") {
+      const uniqueIds = new Set<string>();
+      for (const cluster of Object.values(tweetMap)) {
+        if (!cluster) {
+          continue;
+        }
+        for (const tweetId of Object.values(cluster)) {
+          const normalized = sanitizeString(tweetId);
+          if (normalized) {
+            uniqueIds.add(normalized);
+          }
+        }
+      }
+      tweets = uniqueIds.size;
+    }
+  }
+
+  const handle = `@${username}`;
+  const avatarUrl = `https://unavatar.io/twitter/${username}`;
+
+  return {
+    username,
+    handle,
+    description,
+    clusters,
+    tweets,
+    followers: followerIds.size,
+    following: followingIds.size,
+    likes,
+    avatarUrl,
+  };
+};
+
+export const getUserClusters = async (inputUsername: string): Promise<UserClusters | null> => {
+  const username = normalizeUsername(inputUsername);
+  if (!username) {
+    return null;
+  }
+
+  const hierarchyRows = await readParquetRecords(username, "labeled_cluster_hierarchy.parquet", [
+    "cluster_id",
+    "name",
+    "summary",
+    "low_quality_cluster",
+    "level",
+  ]);
+  if (!hierarchyRows.length) {
+    return null;
+  }
+
+  const hierarchy = hierarchyRows.filter((row) => sanitizeNumber(row["level"]) === 0);
+  if (!hierarchy.length) {
+    return { clusters: [] };
+  }
+
+  const clusterIds = new Set<string>();
+  const nameMap = new Map<string, string>();
+  for (const row of hierarchy) {
+    const clusterId = sanitizeString(row["cluster_id"]);
+    if (!clusterId) {
+      continue;
+    }
+    clusterIds.add(clusterId);
+    const name = sanitizeString(row["name"]) || clusterId;
+    nameMap.set(clusterId, name);
+  }
+
+  const ontologyData = await readJsonFile<Record<string, unknown>>(username, "cluster_ontology_items.json");
+  const labelsData = await readJsonFile<Record<string, unknown>>(username, "cluster_labels.json");
+  const groupData = await readJsonFile<Record<string, unknown>>(username, "group_results.json");
+
+  const yearlyMap = new Map<string, { period: string; summary: string }[]>();
+  const ontologyMap = new Map<string, ClusterOntology>();
+
+  const ingestOntologySource = (source: Record<string, unknown> | null | undefined) => {
+    if (!source) {
+      return;
+    }
+    for (const [key, rawValue] of Object.entries(source)) {
+      const entry = (rawValue ?? {}) as Record<string, unknown>;
+      const clusterKeyRaw = entry["cluster_id"] ?? key;
+      const clusterKey = sanitizeString(clusterKeyRaw);
+      if (!clusterKey || !clusterIds.has(clusterKey)) {
+        continue;
+      }
+      const container =
+        entry["ontology_items"] && typeof entry["ontology_items"] === "object"
+          ? (entry["ontology_items"] as Record<string, unknown>)
+          : entry;
+      if (!ontologyMap.has(clusterKey)) {
+        ontologyMap.set(clusterKey, normalizeOntology(container));
+      }
+      if (!yearlyMap.has(clusterKey)) {
+        const yearly = normalizeYearlySummaries(container["yearly_summaries"]);
+        if (yearly.length) {
+          yearlyMap.set(clusterKey, yearly);
+        }
+      }
+    }
+  };
+
+  ingestOntologySource(ontologyData);
+  ingestOntologySource(labelsData);
+
+  const relatedMap = new Map<string, Map<string, string>>();
+  if (groupData && typeof groupData === "object") {
+    const groups = (groupData as Record<string, unknown>)["groups"];
+    if (Array.isArray(groups)) {
+      for (const group of groups) {
+        if (!group || typeof group !== "object") {
+          continue;
+        }
+        const membersRaw = (group as Record<string, unknown>)["members"];
+        if (!Array.isArray(membersRaw)) {
+          continue;
+        }
+        const members: { id: string; name: string }[] = [];
+        for (const entry of membersRaw) {
+          if (!entry || typeof entry !== "object") {
+            continue;
+          }
+          const record = entry as Record<string, unknown>;
+          const id = sanitizeString(record["id"]);
+          if (!id || !clusterIds.has(id)) {
+            continue;
+          }
+          const name = sanitizeString(record["name"]) || nameMap.get(id) || id;
+          members.push({ id, name });
+        }
+        for (const member of members) {
+          const store = relatedMap.get(member.id) ?? new Map<string, string>();
+          for (const other of members) {
+            if (other.id === member.id) {
+              continue;
+            }
+            store.set(other.id, other.name);
+          }
+          relatedMap.set(member.id, store);
+        }
+      }
+    }
+  }
+
+  const tweetRows = await readParquetRecords(username, "clustered_tweets_df.parquet", [
+    "cluster",
+    "favorite_count",
+    "created_at",
+    "reply_to_username",
+  ]);
+
+  const statsMap = new Map<
+    string,
+    {
+      likes: number[];
+      totalLikes: number;
+      count: number;
+      timestamps: number[];
+      replies: Map<string, number>;
+    }
+  >();
+
+  for (const row of tweetRows) {
+    const clusterId = sanitizeString(row["cluster"]);
+    if (!clusterId || !clusterIds.has(clusterId)) {
+      continue;
+    }
+    const stats =
+      statsMap.get(clusterId) ??
+      {
+        likes: [],
+        totalLikes: 0,
+        count: 0,
+        timestamps: [],
+        replies: new Map<string, number>(),
+      };
+
+    const favorite = sanitizeNumber(row["favorite_count"]);
+    stats.likes.push(favorite);
+    stats.totalLikes += favorite;
+    stats.count += 1;
+
+    const createdAtRaw = row["created_at"];
+    if (createdAtRaw instanceof Date) {
+      stats.timestamps.push(createdAtRaw.getTime());
+    } else {
+      const createdAtText = sanitizeString(createdAtRaw);
+      if (createdAtText) {
+        const parsed = Date.parse(createdAtText);
+        if (Number.isFinite(parsed)) {
+          stats.timestamps.push(parsed);
+        }
+      }
+    }
+
+    const replyTo = sanitizeString(row["reply_to_username"]);
+    if (replyTo) {
+      stats.replies.set(replyTo, (stats.replies.get(replyTo) ?? 0) + 1);
+    }
+
+    statsMap.set(clusterId, stats);
+  }
+
+  const clusters = hierarchy.map((row) => {
+    const clusterId = sanitizeString(row["cluster_id"]);
+    const stats = statsMap.get(clusterId);
+    const replies =
+      stats && stats.replies.size
+        ? Array.from(stats.replies.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([usernameEntry, count]) => ({
+              username: usernameEntry,
+              count,
+            }))
+        : [];
+
+    const relatedEntries = relatedMap.get(clusterId);
+    const relatedClusters = relatedEntries
+      ? Array.from(relatedEntries.entries())
+          .filter(([id]) => clusterIds.has(id))
+          .map(([id, name]) => ({ id, name }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      : [];
+
+    return {
+      id: clusterId,
+      name: sanitizeString(row["name"]) || clusterId,
+      summary: sanitizeString(row["summary"]),
+      lowQuality: sanitizeBoolean(row["low_quality_cluster"]),
+      tweetsCount: stats?.count ?? 0,
+      totalLikes: Math.round(stats?.totalLikes ?? 0),
+      medianLikes: Math.round(stats ? medianNumber(stats.likes) : 0),
+      medianDate: stats ? medianDateIso(stats.timestamps) : null,
+      tweetsPerMonthLabel: "placeholder",
+      mostRepliedTo: replies,
+      relatedClusters,
+      yearlySummaries: yearlyMap.get(clusterId) ?? [],
+      ontology: ontologyMap.get(clusterId) ?? normalizeOntology({}),
+    };
+  });
+
+  clusters.sort((a, b) => {
+    const aHasDate = a.medianDate ? 1 : 0;
+    const bHasDate = b.medianDate ? 1 : 0;
+    if (aHasDate !== bHasDate) {
+      return bHasDate - aHasDate;
+    }
+    if (!a.medianDate || !b.medianDate) {
+      return 0;
+    }
+    return Date.parse(b.medianDate) - Date.parse(a.medianDate);
+  });
+
+  return { clusters };
+};
+
+const detectRetweet = (text: string) => {
+  const snippet = text.trim().toLowerCase();
+  return snippet.startsWith("rt @");
+};
+
+const pickLongestPath = (
+  paths: Record<string, string[]> | null,
+  rootId: string,
+  children: Record<string, string[]>,
+): string[] => {
+  const fallback = [rootId];
+  let best: string[] = [];
+
+  if (paths) {
+    for (const path of Object.values(paths)) {
+      if (!Array.isArray(path)) {
+        continue;
+      }
+      const normalized = path.map((value) => sanitizeString(value)).filter(Boolean);
+      if (!normalized.length) {
+        continue;
+      }
+      if (normalized[0] !== rootId) {
+        normalized.unshift(rootId);
+      }
+      if (normalized.length > best.length) {
+        best = normalized;
+      }
+    }
+  }
+
+  if (best.length) {
+    return best;
+  }
+
+  const stack: string[][] = [[rootId]];
+  while (stack.length) {
+    const current = stack.pop()!;
+    const node = current[current.length - 1];
+    const nextChildren = children[node] ?? [];
+    if (!nextChildren.length) {
+      if (current.length > best.length) {
+        best = current;
+      }
+      continue;
+    }
+    for (const child of nextChildren) {
+      stack.push([...current, child]);
+    }
+  }
+
+  return best.length ? best : fallback;
+};
+
+export const getUserThreads = async (inputUsername: string): Promise<UserThreads | null> => {
+  const username = normalizeUsername(inputUsername);
+  if (!username) {
+    return null;
+  }
+
+  const tweetRows = await readParquetRecords(username, "clustered_tweets_df.parquet", [
+    "tweet_id",
+    "cluster",
+    "cluster_prob",
+    "username",
+    "created_at",
+    "full_text",
+    "favorite_count",
+    "reply_to_tweet_id",
+  ]);
+  if (!tweetRows.length) {
+    return { threads: [] };
+  }
+
+  const tweetLookup = new Map<
+    string,
+    {
+      cluster: string;
+      clusterProb: number;
+      username: string;
+      createdAt: string | null;
+      fullText: string;
+      favoriteCount: number;
+      replyToTweetId: string;
+    }
+  >();
+
+  for (const row of tweetRows) {
+    const tweetId = sanitizeString(row["tweet_id"]);
+    if (!tweetId) {
+      continue;
+    }
+    const createdAtRaw = row["created_at"];
+    let createdAt: string | null = null;
+    if (createdAtRaw instanceof Date && !Number.isNaN(createdAtRaw.getTime())) {
+      createdAt = createdAtRaw.toISOString();
+    } else {
+      const parsed = sanitizeString(createdAtRaw);
+      createdAt = parsed || null;
+    }
+
+    tweetLookup.set(tweetId, {
+      cluster: sanitizeString(row["cluster"]),
+      clusterProb: sanitizeNumber(row["cluster_prob"]),
+      username: sanitizeString(row["username"]),
+      createdAt,
+      fullText: sanitizeString(row["full_text"]),
+      favoriteCount: Math.round(sanitizeNumber(row["favorite_count"])),
+      replyToTweetId: sanitizeString(row["reply_to_tweet_id"]),
+    });
+  }
+
+  const treesData = (await readPickleFile(username, "trees.pkl")) as Record<string, unknown> | null;
+  const incompleteData = (await readPickleFile(username, "incomplete_trees.pkl")) as
+    | Record<string, unknown>
+    | null;
+
+  const combinedRoots = new Map<
+    string,
+    {
+      tree: Record<string, unknown>;
+      isIncomplete: boolean;
+    }
+  >();
+
+  const ingestTree = (payload: Record<string, unknown> | null, isIncomplete: boolean) => {
+    if (!payload) {
+      return;
+    }
+    for (const [key, value] of Object.entries(payload)) {
+      const rootId = sanitizeString(key);
+      if (!rootId || combinedRoots.has(rootId)) {
+        continue;
+      }
+      if (!value || typeof value !== "object") {
+        continue;
+      }
+      combinedRoots.set(rootId, {
+        tree: value as Record<string, unknown>,
+        isIncomplete,
+      });
+    }
+  };
+
+  ingestTree(treesData, false);
+  ingestTree(incompleteData, true);
+
+  const threads: ThreadEntry[] = [];
+
+  for (const [rootId, payload] of combinedRoots.entries()) {
+    const tree = payload.tree;
+
+    const tweetsRaw = tree["tweets"];
+    const tweetsMap: Record<string, Record<string, unknown>> =
+      tweetsRaw && typeof tweetsRaw === "object"
+        ? (tweetsRaw as Record<string, Record<string, unknown>>)
+        : {};
+
+    const childrenRaw = tree["children"];
+    const children: Record<string, string[]> = {};
+    if (childrenRaw && typeof childrenRaw === "object") {
+      for (const [parent, childrenList] of Object.entries(childrenRaw as Record<string, unknown>)) {
+        const parentId = sanitizeString(parent);
+        if (!parentId) {
+          continue;
+        }
+        if (!Array.isArray(childrenList)) {
+          continue;
+        }
+        const normalized = sanitizeStringArray(childrenList);
+        if (normalized.length) {
+          children[parentId] = normalized;
+        }
+      }
+    }
+
+    const pathsRaw = tree["paths"];
+    const paths: Record<string, string[]> | null =
+      pathsRaw && typeof pathsRaw === "object"
+        ? (pathsRaw as Record<string, string[]>)
+        : null;
+
+    const longestPath = pickLongestPath(paths, rootId, children);
+
+    let totalFavorites = 0;
+    let maxClusterProb = 0;
+    let clusterCandidate = "";
+    let rootIsReply = false;
+    let containsRetweet = false;
+    let rootCreatedAt: string | null = null;
+    const tweets: ThreadTweet[] = [];
+
+    longestPath.forEach((tweetId, index) => {
+      const lookup = tweetLookup.get(tweetId);
+      const fallback = tweetsMap[tweetId] ?? {};
+
+      const username = lookup?.username || sanitizeString((fallback as Record<string, unknown>)["username"]);
+      const createdAt =
+        lookup?.createdAt ||
+        (() => {
+          const raw = (fallback as Record<string, unknown>)["created_at"];
+          if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+            return raw.toISOString();
+          }
+          const text = sanitizeString(raw);
+          return text || null;
+        })();
+      const fullText =
+        lookup?.fullText || sanitizeString((fallback as Record<string, unknown>)["full_text"]);
+      const favoriteCount =
+        lookup?.favoriteCount ?? Math.round(sanitizeNumber((fallback as Record<string, unknown>)["favorite_count"]));
+      const replyTo =
+        lookup?.replyToTweetId || sanitizeString((fallback as Record<string, unknown>)["reply_to_tweet_id"]);
+      const clusterId =
+        lookup?.cluster || sanitizeString((fallback as Record<string, unknown>)["cluster"]);
+      const clusterProb =
+        lookup?.clusterProb ?? sanitizeNumber((fallback as Record<string, unknown>)["cluster_prob"]);
+
+      const isReply = Boolean(replyTo);
+      const isRetweet = detectRetweet(fullText);
+
+      if (index === 0) {
+        rootIsReply = isReply;
+        rootCreatedAt = createdAt;
+      }
+      if (!clusterCandidate && clusterId) {
+        clusterCandidate = clusterId;
+      }
+      if (clusterProb > maxClusterProb) {
+        maxClusterProb = clusterProb;
+      }
+      if (isRetweet) {
+        containsRetweet = true;
+      }
+
+      totalFavorites += favoriteCount;
+
+      tweets.push({
+        id: tweetId,
+        username,
+        createdAt,
+        fullText,
+        favoriteCount,
+        clusterId,
+        clusterProb,
+        isReply,
+        isRetweet,
+      });
+    });
+
+    if (!tweets.length) {
+      continue;
+    }
+
+    threads.push({
+      id: rootId,
+      clusterId: clusterCandidate,
+      isIncomplete: payload.isIncomplete,
+      rootIsReply,
+      containsRetweet,
+      totalFavorites,
+      rootCreatedAt,
+      maxClusterProb,
+      tweets,
+    });
+  }
+
+  threads.sort((a, b) => {
+    const aHasDate = a.rootCreatedAt ? 1 : 0;
+    const bHasDate = b.rootCreatedAt ? 1 : 0;
+    if (aHasDate !== bHasDate) {
+      return bHasDate - aHasDate;
+    }
+    if (!a.rootCreatedAt || !b.rootCreatedAt) {
+      return 0;
+    }
+    return Date.parse(b.rootCreatedAt) - Date.parse(a.rootCreatedAt);
+  });
+
+  return { threads };
+};

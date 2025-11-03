@@ -10,14 +10,14 @@ import {
   ThreadsSection,
 } from "@/components/user-explorer";
 import ThemeSwitch from "@/components/theme-switch";
-import { listVolumeUsers } from "@/lib/modal-data";
+import { listUsers } from "@/lib/storage-data";
 
 export default async function Home() {
   let users: string[] = [];
   try {
-    users = await listVolumeUsers();
+    users = await listUsers();
   } catch (error) {
-    console.error("Failed to load users from Modal volume.", error);
+    console.error("Failed to load users from Supabase storage.", error);
   }
 
   return (

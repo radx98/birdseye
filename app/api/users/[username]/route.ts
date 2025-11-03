@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getUserSummary } from "@/lib/modal-data";
+import { getUserSummary } from "@/lib/storage-data";
 
 type RouteContext = {
   params: Promise<{

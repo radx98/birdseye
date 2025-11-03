@@ -1,11 +1,11 @@
-# Modal Volume Data Map
+# Supabase Storage Data Map
 
-This guide catalogs the datasets stored in the Modal volume `twitter-archive-data` and shows where each element lives inside a user's directory. It is intended for any client that needs to read the same data directly from the volume.
+This guide catalogs the datasets stored in the Supabase S3-compatible storage reachable with the credentials in `.env` and shows where each element lives inside a user's directory. It is intended for any client that needs to read the same data directly from that storage.
 
-## Volume Layout
+## Storage Layout
 
-- Connect with `modal.Volume.lookup("twitter-archive-data")`.
-- User data lives directly under the volume root as directories named after the lowercase username, e.g. `/<username>/`.
+- Connect with any S3-compatible client using the Supabase endpoint (see `.env` credentials). The accessible storage exposes user directories directly at the root.
+- User data lives directly under that root as directories named after the lowercase username, e.g. `/<username>/`.
 - A user directory is considered ready when it contains the artifacts described below; one quick check is the presence of `cluster_ontology_items.json`. An additional optional metadata file, `clustering_params.json`, may also be present.
 - Every path in this document is relative to the user directory, so prepend `/{username}/` when reading a file.
 
@@ -141,10 +141,10 @@ This guide catalogs the datasets stored in the Modal volume `twitter-archive-dat
 
 ## Putting It Together
 
-1. Enumerate available users with `volume.listdir("/")` and select a username directory.
+1. Enumerate available users by listing the bucket root prefixes and select a username directory.
 2. Load `clustered_tweets_df.parquet` and `labeled_cluster_hierarchy.parquet` to build cluster tables, stats, and timelines.
 3. When a cluster is selected, read `cluster_ontology_items.json` and `local_tweet_id_maps.json` for ontology content and tweet reference resolution.
 4. Use `group_results.json` to surface related clusters and higher-level groupings.
 5. For thread reconstruction, combine `trees.pkl` (and optionally `incomplete_trees.pkl`) with the filtered tweets, and enrich quote cards via `qts.pkl`.
 
-All paths are shared across users and live directly under `/{username}/` inside the `twitter-archive-data` Modal volume, so the same retrieval approach applies universally.
+All paths are shared across users and live directly under `/{username}/` inside the accessible Supabase storage root, so the same retrieval approach applies universally.
