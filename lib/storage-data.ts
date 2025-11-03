@@ -228,7 +228,11 @@ const normalizeArrowValue = (value: unknown): unknown => {
     return Number.isFinite(value.getTime()) ? value.toISOString() : null;
   }
   if (ArrayBuffer.isView(value)) {
-    return Array.from(value as ArrayLike<number>);
+    const view = value as ArrayBufferView;
+    if (typeof (view as { length?: number }).length === "number") {
+      return Array.from(view as unknown as ArrayLike<number>);
+    }
+    return Array.from(new Uint8Array(view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength)));
   }
   return value;
 };
