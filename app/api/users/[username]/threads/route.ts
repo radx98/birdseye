@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getUserThreads } from "@/lib/modal-data";
+import { getUserThreads } from "@/lib/storage-data";
 
 type RouteContext = {
   params: Promise<{

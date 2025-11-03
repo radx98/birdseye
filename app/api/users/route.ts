@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { listVolumeUsers } from "@/lib/modal-data";
+import { listUsers } from "@/lib/storage-data";
 
 export async function GET() {
   try {
-    const users = await listVolumeUsers();
+    const users = await listUsers();
     return NextResponse.json({ users });
   } catch (error) {
     console.error("[users][list]", error);

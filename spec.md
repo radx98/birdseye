@@ -5,9 +5,9 @@
 
 ### Data source
 
-Data is fetched from Modal. MODAL_TOKEN_ID and MODAL_TOKEN_SECRET are in the ".env" file. The fetch algorythm is already implemented for several elements on the page, which can be used as an example.
+Data is fetched directly from a Supabase S3-compatible store. Credentials live in `.env` as `aws_access_key_id`, `aws_secret_access_key`, `endpoint_url`, and `region`. These credentials expose user folders right at the storage root, so no bucket name configuration is required. The fetch algorithm is already implemented across the app and can be reused as a reference.
 
-Data sample can be found in "data_sample" folder. Don't ever use it in the code, it's gonna be deleted later. It is there just to show the structure of the Modal volume that the data should be fetched from. There is also a detailed map of the data in the Modal volume in spec_data_map.md. The volume's name is 'twitter-archive-data' and it contains the saeme two user folders, 'exgenesis' and 'romeostevens76' in its root. Later there are going to be more users. If any data is missing the page should show a corresponding message.
+Data sample can be found in the `data_sample` folder. Don't ever use it in the code—it will be deleted later. It only illustrates the structure stored in Supabase. There is also a detailed map of the dataset in `spec_data_map.md`. The bucket root currently contains the same two user folders, `exgenesis` and `romeostevens76`, with more to be added later. If any data is missing the page should show a corresponding message.
 
 ## Layout
 
