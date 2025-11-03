@@ -11,10 +11,14 @@ import {
   type ReactNode,
 } from "react";
 import type { ClusterInfo, UserClusters } from "@/types/cluster";
+import type { ThreadEntry, UserThreads } from "@/types/thread";
 import type { UserSummary } from "@/types/user";
 
 type SummaryCache = Map<string, UserSummary>;
 type ClusterCache = Map<string, UserClusters>;
+type ThreadCache = Map<string, UserThreads>;
+
+export type ThreadSortKey = "favorite-count" | "date" | "cluster-probability";
 
 export type ExplorerContextValue = {
   selectOptions: Array<{ value: string; label: string }>;
@@ -28,6 +32,9 @@ export type ExplorerContextValue = {
   clustersData: UserClusters | null;
   clustersLoading: boolean;
   expandLoading: boolean;
+  threadsData: UserThreads | null;
+  threadsLoading: boolean;
+  threadsError: string | null;
   handleSelection: (value: string) => void;
   handleExpand: () => Promise<void>;
   hideLowQuality: boolean;
@@ -36,6 +43,19 @@ export type ExplorerContextValue = {
   selectedCluster: ClusterInfo | null;
   setSelectedClusterId: (id: string) => void;
   hasAvailableClusters: boolean;
+  hideReplies: boolean;
+  toggleHideReplies: () => void;
+  hideRetweets: boolean;
+  toggleHideRetweets: () => void;
+  hideIncompleteThreads: boolean;
+  toggleHideIncompleteThreads: () => void;
+  threadSortKey: ThreadSortKey;
+  setThreadSortKey: (key: ThreadSortKey) => void;
+  threadSortAscending: boolean;
+  setThreadSortAscending: (value: boolean) => void;
+  visibleThreads: ThreadEntry[];
+  hasThreadData: boolean;
+  hasVisibleThreads: boolean;
 };
 
 const UserExplorerContext = createContext<ExplorerContextValue | null>(null);
@@ -58,9 +78,18 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
   const [clustersLoading, setClustersLoading] = useState(false);
   const [hideLowQuality, setHideLowQuality] = useState(false);
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
+  const [threadsData, setThreadsData] = useState<UserThreads | null>(null);
+  const [threadsLoading, setThreadsLoading] = useState(false);
+  const [threadsError, setThreadsError] = useState<string | null>(null);
+  const [hideReplies, setHideReplies] = useState(false);
+  const [hideRetweets, setHideRetweets] = useState(false);
+  const [hideIncompleteThreads, setHideIncompleteThreads] = useState(false);
+  const [threadSortKey, setThreadSortKeyState] = useState<ThreadSortKey>("favorite-count");
+  const [threadSortAscending, setThreadSortAscendingState] = useState(false);
 
   const summaryCacheRef = useRef<SummaryCache>(new Map());
   const clusterCacheRef = useRef<ClusterCache>(new Map());
+  const threadCacheRef = useRef<ThreadCache>(new Map());
 
   useEffect(() => {
     setOptions(users);
@@ -142,11 +171,19 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     setSelectedUser(value);
     setSummaryError(null);
     setClustersError(null);
+    setThreadsError(null);
     setSummary(null);
     setClustersData(null);
     setClustersLoading(false);
+    setThreadsData(null);
+    setThreadsLoading(false);
     setSelectedClusterId(null);
     setHideLowQuality(false);
+    setHideReplies(false);
+    setHideRetweets(false);
+    setHideIncompleteThreads(false);
+    setThreadSortKeyState("favorite-count");
+    setThreadSortAscendingState(false);
   }, []);
 
   const handleExpand = useCallback(async () => {
@@ -156,7 +193,9 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     setExpandLoading(true);
     setSummaryError(null);
     setClustersError(null);
+    setThreadsError(null);
     setClustersLoading(false);
+    setThreadsLoading(false);
 
     try {
       const cachedSummary = summaryCacheRef.current.get(cacheKey);
@@ -185,14 +224,18 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
       if (!summaryLoadedSuccessfully) {
         setClustersData(null);
         setClustersLoading(false);
+        setThreadsData(null);
+        setThreadsLoading(false);
         return;
       }
 
-      const cachedClusters = clusterCacheRef.current.get(cacheKey);
-      if (cachedClusters) {
-        setClustersData(cachedClusters);
-        setClustersLoading(false);
-      } else {
+      const loadClusters = async () => {
+        const cachedClusters = clusterCacheRef.current.get(cacheKey);
+        if (cachedClusters) {
+          setClustersData(cachedClusters);
+          setClustersLoading(false);
+          return;
+        }
         setClustersData(null);
         setClustersLoading(true);
         try {
@@ -210,7 +253,35 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
         } finally {
           setClustersLoading(false);
         }
-      }
+      };
+
+      const loadThreads = async () => {
+        const cachedThreads = threadCacheRef.current.get(cacheKey);
+        if (cachedThreads) {
+          setThreadsData(cachedThreads);
+          setThreadsLoading(false);
+          return;
+        }
+        setThreadsData(null);
+        setThreadsLoading(true);
+        try {
+          const res = await fetch(`/api/users/${encodeURIComponent(cacheKey)}/threads`, { cache: "no-store" });
+          const data = await res.json();
+          if (!res.ok) {
+            const message = typeof data?.error === "string" ? data.error : "Unable to load threads.";
+            throw new Error(message);
+          }
+          threadCacheRef.current.set(cacheKey, data);
+          setThreadsData(data);
+        } catch (error) {
+          setThreadsData(null);
+          setThreadsError(error instanceof Error ? error.message : "Unexpected error while loading threads.");
+        } finally {
+          setThreadsLoading(false);
+        }
+      };
+
+      await Promise.all([loadClusters(), loadThreads()]);
     } finally {
       setExpandLoading(false);
     }
@@ -218,6 +289,26 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
 
   const toggleHideLowQuality = useCallback(() => {
     setHideLowQuality((prev) => !prev);
+  }, []);
+
+  const toggleHideReplies = useCallback(() => {
+    setHideReplies((prev) => !prev);
+  }, []);
+
+  const toggleHideRetweets = useCallback(() => {
+    setHideRetweets((prev) => !prev);
+  }, []);
+
+  const toggleHideIncompleteThreads = useCallback(() => {
+    setHideIncompleteThreads((prev) => !prev);
+  }, []);
+
+  const setThreadSortKey = useCallback((key: ThreadSortKey) => {
+    setThreadSortKeyState(key);
+  }, []);
+
+  const setThreadSortAscending = useCallback((value: boolean) => {
+    setThreadSortAscendingState(value);
   }, []);
 
   const filteredClusters: ClusterInfo[] = useMemo(() => {
@@ -242,6 +333,73 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
 
   const hasAvailableClusters = filteredClusters.length > 0;
 
+  const visibleThreads = useMemo(() => {
+    const baseList = threadsData?.threads ?? [];
+    if (!baseList.length) {
+      return [] as ThreadEntry[];
+    }
+
+    const clusterFilter = selectedCluster?.id ?? null;
+    const applyFilters = baseList.filter((thread) => {
+      if (clusterFilter && thread.clusterId !== clusterFilter) {
+        return false;
+      }
+      if (hideIncompleteThreads && thread.isIncomplete) {
+        return false;
+      }
+      if (hideReplies && thread.rootIsReply) {
+        return false;
+      }
+      if (hideRetweets && thread.containsRetweet) {
+        return false;
+      }
+      return true;
+    });
+
+    if (!applyFilters.length) {
+      return [] as ThreadEntry[];
+    }
+
+    const toDateValue = (value: string | null) => {
+      if (!value) return 0;
+      const timestamp = Date.parse(value);
+      return Number.isNaN(timestamp) ? 0 : timestamp;
+    };
+
+    const sorted = [...applyFilters].sort((a, b) => {
+      const compareNumbers = (left: number, right: number) =>
+        threadSortAscending ? left - right : right - left;
+
+      let primary = 0;
+      if (threadSortKey === "favorite-count") {
+        primary = compareNumbers(a.totalFavorites ?? 0, b.totalFavorites ?? 0);
+      } else if (threadSortKey === "date") {
+        primary = compareNumbers(toDateValue(a.rootCreatedAt ?? null), toDateValue(b.rootCreatedAt ?? null));
+      } else if (threadSortKey === "cluster-probability") {
+        primary = compareNumbers(a.maxClusterProb ?? 0, b.maxClusterProb ?? 0);
+      }
+
+      if (primary !== 0) {
+        return primary;
+      }
+
+      return compareNumbers(toDateValue(a.rootCreatedAt ?? null), toDateValue(b.rootCreatedAt ?? null));
+    });
+
+    return sorted;
+  }, [
+    threadsData,
+    selectedCluster,
+    hideIncompleteThreads,
+    hideReplies,
+    hideRetweets,
+    threadSortKey,
+    threadSortAscending,
+  ]);
+
+  const hasThreadData = Boolean(threadsData?.threads?.length);
+  const hasVisibleThreads = visibleThreads.length > 0;
+
   const contextValue: ExplorerContextValue = {
     selectOptions,
     selectedUser,
@@ -254,6 +412,9 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     clustersData,
     clustersLoading,
     expandLoading,
+    threadsData,
+    threadsLoading,
+    threadsError,
     handleSelection,
     handleExpand,
     hideLowQuality,
@@ -262,6 +423,19 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     selectedCluster,
     setSelectedClusterId,
     hasAvailableClusters,
+    hideReplies,
+    toggleHideReplies,
+    hideRetweets,
+    toggleHideRetweets,
+    hideIncompleteThreads,
+    toggleHideIncompleteThreads,
+    threadSortKey,
+    setThreadSortKey,
+    threadSortAscending,
+    setThreadSortAscending,
+    visibleThreads,
+    hasThreadData,
+    hasVisibleThreads,
   };
 
   return <UserExplorerContext.Provider value={contextValue}>{children}</UserExplorerContext.Provider>;

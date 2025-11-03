@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ModalClient, Sandbox } from "modal";
 import type { ClusterOntology, UserClusters } from "@/types/cluster";
+import type { ThreadEntry, ThreadTweet, UserThreads } from "@/types/thread";
 import type { UserSummary } from "@/types/user";
 
 type SandboxRunner<T> = (sandbox: Sandbox, mountPath: string) => Promise<T>;
@@ -463,5 +464,165 @@ export const getUserClusters = async (username: string): Promise<UserClusters | 
     });
 
     return { clusters };
+  });
+};
+
+export const getUserThreads = async (username: string): Promise<UserThreads | null> => {
+  const cleanUsername = username.replace(/^@/, "").trim();
+  if (!cleanUsername) {
+    return null;
+  }
+
+  return runInSandbox(async (sandbox, mountPath) => {
+    const script = loadPythonScript("get_user_threads.py");
+
+    const runScript = async () => {
+      const payload = await execPythonJSON(sandbox, script, [mountPath, cleanUsername]);
+      return toPythonRecordResult(payload);
+    };
+
+    let result = await runScript();
+    let attemptedInstall = false;
+    let notFound = false;
+
+    const resolveRecord = async (): Promise<Record<string, unknown> | null> => {
+      while (!result.ok) {
+        const errorCode = result.errorCode;
+        if (errorCode === "not-found") {
+          notFound = true;
+          return null;
+        }
+        if (errorCode === "missing-dependency" && !attemptedInstall) {
+          attemptedInstall = true;
+          await ensureClusterDependencies(sandbox);
+          result = await runScript();
+          continue;
+        }
+        if (!errorCode) {
+          return null;
+        }
+        throw new Error(
+          attemptedInstall
+            ? `Thread retrieval failed after dependency install: ${errorCode}`
+            : `Thread retrieval failed: ${errorCode}`,
+        );
+      }
+      return result.record;
+    };
+
+    const record = await resolveRecord();
+    if (!record) {
+      return notFound ? null : { threads: [] };
+    }
+
+    const data = record.threads;
+    if (!Array.isArray(data)) {
+      return { threads: [] };
+    }
+
+    const sanitizeString = (value: unknown): string => {
+      if (typeof value === "string") {
+        return value.trim();
+      }
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return String(value);
+      }
+      return "";
+    };
+
+    const sanitizeBoolean = (value: unknown): boolean => {
+      if (typeof value === "boolean") {
+        return value;
+      }
+      if (typeof value === "number") {
+        return value !== 0;
+      }
+      if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        return normalized === "1" || normalized === "true";
+      }
+      return false;
+    };
+
+    const sanitizeNumber = (value: unknown): number => {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === "string") {
+        const parsed = Number(value.replace(/,/g, ""));
+        if (Number.isFinite(parsed)) {
+          return parsed;
+        }
+      }
+      return 0;
+    };
+
+    const sanitizeDate = (value: unknown): string | null => {
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed || null;
+      }
+      if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString();
+      }
+      return null;
+    };
+
+    const sanitizeTweet = (value: unknown): ThreadTweet | null => {
+      if (!value || typeof value !== "object") {
+        return null;
+      }
+      const record = value as Record<string, unknown>;
+      const id = sanitizeString(record.id);
+      if (!id) {
+        return null;
+      }
+
+      return {
+        id,
+        username: sanitizeString(record.username),
+        createdAt: sanitizeDate(record.created_at ?? record.createdAt),
+        fullText: sanitizeString(record.full_text ?? record.fullText),
+        favoriteCount: sanitizeNumber(record.favorite_count ?? record.favoriteCount),
+        clusterId: sanitizeString(record.cluster_id ?? record.clusterId),
+        clusterProb: sanitizeNumber(record.cluster_prob ?? record.clusterProb),
+        isReply: sanitizeBoolean(record.is_reply ?? record.isReply),
+        isRetweet: sanitizeBoolean(record.is_retweet ?? record.isRetweet),
+      };
+    };
+
+    const threads: ThreadEntry[] = [];
+    for (const entry of data) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const record = entry as Record<string, unknown>;
+      const id = sanitizeString(record.id);
+      if (!id) {
+        continue;
+      }
+      const tweetsRaw = Array.isArray(record.tweets) ? record.tweets : [];
+      const tweets: ThreadTweet[] = [];
+      for (const rawTweet of tweetsRaw) {
+        const tweet = sanitizeTweet(rawTweet);
+        if (tweet) {
+          tweets.push(tweet);
+        }
+      }
+
+      threads.push({
+        id,
+        clusterId: sanitizeString(record.cluster_id ?? record.clusterId),
+        isIncomplete: sanitizeBoolean(record.is_incomplete ?? record.isIncomplete),
+        rootIsReply: sanitizeBoolean(record.root_is_reply ?? record.rootIsReply),
+        containsRetweet: sanitizeBoolean(record.contains_retweet ?? record.containsRetweet),
+        totalFavorites: sanitizeNumber(record.total_favorites ?? record.totalFavorites),
+        rootCreatedAt: sanitizeDate(record.root_created_at ?? record.rootCreatedAt),
+        maxClusterProb: sanitizeNumber(record.max_cluster_prob ?? record.maxClusterProb),
+        tweets,
+      });
+    }
+
+    return { threads };
   });
 };

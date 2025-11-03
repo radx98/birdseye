@@ -90,10 +90,10 @@ Three blocks in a row in two rows, each includes up to 4 items that consist of a
 
 ### Threads and Tweets
 
-Switches "Hide Replies", "Hide Retweets", "Hide incomplete threads" with "i" icon poping up "Some conversation threads may be incomplete because not all tweets were captured in the archive"
+Switches "Hide Replies", "Hide Retweets", "Hide incomplete threads" with "i" icon popping up "Some conversation threads may be incomplete because not all tweets were captured in the archive"
 
-Sort dropdown with "Favorite Count", "Date", "Cluster Probability" options + "Ascending order" switch
+Sorting dropdown with "Favorite Count", "Date", "Cluster Probability" options + "Ascending order" switch
 
 Infobox: "↔️ Scroll to see more tweet threads. Only the longest thread starting at each root is displayed."
 
-List of threads and tweets in a waterfall/masonry layout
+List of threads and tweets in a waterfall/masonry layout 3 in a row. Each in its own block styled the same way as Most replied to and Related Clusters but without headers. Inside is a traditional tweet layout with user pic on the left and username, date, text, likes number on the right. Then if it's a thread, next tweet after a separator.
