@@ -80,7 +80,7 @@ Chart
 
 Infobox: "↔️ We gathered some key features to help understand the topic all at once. You can click 🔗 references to see the tweets that inform them."
 
-Horizontally scrollable columns, each includes up to 4 items that consist of a short paragraph and "🔗 [number] references"
+Three blocks in a row in two rows, each includes up to 4 items that consist of a short paragraph and "🔗 [number] references". Blocks are styled the same way as Most replied to and Related Clusters.
 - Entities
 - Beliefs & Values
 - Goals

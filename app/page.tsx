@@ -6,6 +6,7 @@ import {
   UserExplorerProvider,
   YearlySummariesSection,
   TweetsOverTimeSection,
+  OntologySection,
 } from "@/components/user-explorer";
 import ThemeSwitch from "@/components/theme-switch";
 import { listVolumeUsers } from "@/lib/modal-data";
@@ -119,6 +120,7 @@ export default async function Home() {
             <ClustersSection />
             <YearlySummariesSection />
             <TweetsOverTimeSection />
+            <OntologySection />
           </>
         </UserExplorerProvider>
       </div>

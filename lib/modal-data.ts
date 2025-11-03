@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ModalClient, Sandbox } from "modal";
-import type { UserClusters } from "@/types/cluster";
+import type { ClusterOntology, UserClusters } from "@/types/cluster";
 import type { UserSummary } from "@/types/user";
 
 type SandboxRunner<T> = (sandbox: Sandbox, mountPath: string) => Promise<T>;
@@ -14,6 +16,89 @@ const VOLUME_MOUNT_PATH = "/mnt/vol";
 if (!MODAL_TOKEN_ID || !MODAL_TOKEN_SECRET) {
   throw new Error("Missing Modal credentials. Ensure MODAL_TOKEN_ID and MODAL_TOKEN_SECRET are set.");
 }
+
+const PYTHON_SCRIPT_DIR = join(process.cwd(), "lib", "python");
+const pythonScriptCache = new Map<string, string>();
+
+const loadPythonScript = (filename: string) => {
+  const cached = pythonScriptCache.get(filename);
+  if (cached) {
+    return cached;
+  }
+  const script = readFileSync(join(PYTHON_SCRIPT_DIR, filename), "utf8");
+  pythonScriptCache.set(filename, script);
+  return script;
+};
+
+type PythonRecordResult =
+  | { ok: true; record: Record<string, unknown> }
+  | { ok: false; errorCode: string | null };
+
+const toPythonRecordResult = (value: unknown): PythonRecordResult => {
+  if (!value || typeof value !== "object") {
+    return { ok: false, errorCode: null };
+  }
+  const record = value as Record<string, unknown>;
+  const errorValue = record["__error__"];
+  if (typeof errorValue === "string") {
+    return { ok: false, errorCode: errorValue };
+  }
+  return { ok: true, record };
+};
+
+const sandboxInstallPromises = new WeakMap<Sandbox, Promise<void>>();
+const sandboxInstallFailures = new WeakMap<Sandbox, Error>();
+const sandboxInstallSuccess = new WeakSet<Sandbox>();
+
+const ensureClusterDependencies = async (sandbox: Sandbox) => {
+  if (sandboxInstallSuccess.has(sandbox)) {
+    return;
+  }
+
+  const failure = sandboxInstallFailures.get(sandbox);
+  if (failure) {
+    throw failure;
+  }
+
+  const existingPromise = sandboxInstallPromises.get(sandbox);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const installPromise = (async () => {
+    const proc = await sandbox.exec(
+      ["pip", "install", "--quiet", "pandas", "pyarrow"],
+      {
+        mode: "text",
+      },
+    );
+
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.wait(),
+      proc.stdout.readText(),
+      proc.stderr.readText(),
+    ]);
+
+    if (exitCode !== 0) {
+      const message = stderr.trim() || stdout.trim() || `Failed to install dependencies (exit code ${exitCode})`;
+      throw new Error(message);
+    }
+  })();
+
+  sandboxInstallPromises.set(sandbox, installPromise);
+
+  try {
+    await installPromise;
+    sandboxInstallSuccess.add(sandbox);
+    sandboxInstallFailures.delete(sandbox);
+  } catch (error) {
+    const normalizedError = error instanceof Error ? error : new Error(String(error));
+    sandboxInstallFailures.set(sandbox, normalizedError);
+    throw normalizedError;
+  } finally {
+    sandboxInstallPromises.delete(sandbox);
+  }
+};
 
 const runInSandbox = async <T>(runner: SandboxRunner<T>) => {
   const modal = new ModalClient({
@@ -71,45 +156,9 @@ const execPythonJSON = async (sandbox: Sandbox, script: string, args: string[]):
   return JSON.parse(payload);
 };
 
-const installClusterDependencies = async (sandbox: Sandbox) => {
-  const proc = await sandbox.exec(
-    ["pip", "install", "--quiet", "pandas", "pyarrow"],
-    {
-      mode: "text",
-    },
-  );
-
-  const [exitCode, stdout, stderr] = await Promise.all([
-    proc.wait(),
-    proc.stdout.readText(),
-    proc.stderr.readText(),
-  ]);
-
-  if (exitCode !== 0) {
-    const message = stderr.trim() || stdout.trim() || `Failed to install dependencies (exit code ${exitCode})`;
-    throw new Error(message);
-  }
-};
-
 export const listVolumeUsers = async (): Promise<string[]> => {
   return runInSandbox(async (sandbox, mountPath) => {
-    const script = `
-import json
-import os
-import sys
-
-root = sys.argv[1]
-users = []
-for name in os.listdir(root):
-    if name.startswith('.'):
-        continue
-    path = os.path.join(root, name)
-    if os.path.isdir(path):
-        users.append(name)
-
-users.sort()
-print(json.dumps(users))
-    `;
+    const script = loadPythonScript("list_volume_users.py");
 
     const result = await execPythonJSON(sandbox, script, [mountPath]);
     return Array.isArray(result) ? result.map(String) : [];
@@ -123,111 +172,14 @@ export const getUserSummary = async (username: string): Promise<UserSummary | nu
   }
 
   return runInSandbox(async (sandbox, mountPath) => {
-    const script = `
-import json
-import os
-import pickle
-import sys
-from collections import Counter
-
-root = sys.argv[1]
-user = sys.argv[2]
-user_path = os.path.join(root, user)
-
-if not os.path.isdir(user_path):
-    print(json.dumps({"__error__": "not-found"}))
-    sys.exit(0)
-
-group_file = os.path.join(user_path, "group_results.json")
-clusters_file = os.path.join(user_path, "clustering_params.json")
-trees_file = os.path.join(user_path, "trees.pkl")
-tweet_map_file = os.path.join(user_path, "local_tweet_id_maps.json")
-
-description = ""
-if os.path.exists(group_file):
-    try:
-        with open(group_file, "r", encoding="utf-8") as handle:
-            group_data = json.load(handle)
-            summary = group_data.get("overall_summary") or ""
-            description = " ".join(summary.split())
-    except Exception:
-        description = ""
-
-clusters = 0
-if os.path.exists(clusters_file):
-    try:
-        with open(clusters_file, "r", encoding="utf-8") as handle:
-            cluster_data = json.load(handle)
-            clusters = int(cluster_data.get("n_clusters") or 0)
-    except Exception:
-        clusters = 0
-
-tweets = 0
-followers = set()
-following = set()
-likes = 0
-primary_account = None
-
-if os.path.exists(trees_file):
-    try:
-        with open(trees_file, "rb") as handle:
-            trees = pickle.load(handle)
-
-        account_counts = Counter()
-        for node in trees.values():
-            for tweet in node.get("tweets", {}).values():
-                account_id = tweet.get("account_id")
-                if account_id:
-                    account_counts[account_id] += 1
-
-        if account_counts:
-            primary_account = account_counts.most_common(1)[0][0]
-            for node in trees.values():
-                for tweet in node.get("tweets", {}).values():
-                    account_id = tweet.get("account_id")
-                    reply_to = tweet.get("reply_to_user_id")
-                    if account_id == primary_account:
-                        tweets += 1
-                        fav = tweet.get("favorite_count") or 0
-                        likes += int(fav)
-                        if reply_to and reply_to != primary_account:
-                            following.add(reply_to)
-                    else:
-                        if reply_to == primary_account and account_id:
-                            followers.add(account_id)
-    except Exception:
-        tweets = likes = 0
-        followers = set()
-        following = set()
-
-if tweets == 0 and os.path.exists(tweet_map_file):
-    try:
-        with open(tweet_map_file, "r", encoding="utf-8") as handle:
-            mapping = json.load(handle)
-        tweets = len({tweet_id for cluster in mapping.values() for tweet_id in cluster.values()})
-    except Exception:
-        tweets = 0
-
-result = {
-    "description": description,
-    "clusters": clusters,
-    "tweets": tweets,
-    "followers": len(followers),
-    "following": len(following),
-    "likes": likes,
-}
-
-print(json.dumps(result))
-    `;
+    const script = loadPythonScript("get_user_summary.py");
 
     const payload = await execPythonJSON(sandbox, script, [mountPath, cleanUsername]);
-    if (!payload || typeof payload !== "object") {
+    const result = toPythonRecordResult(payload);
+    if (!result.ok) {
       return null;
     }
-    const record = payload as Record<string, unknown>;
-    if (typeof record.__error__ === "string") {
-      return null;
-    }
+    const record = result.record;
 
     const handle = `@${cleanUsername}`;
     const avatarUrl = `https://unavatar.io/twitter/${cleanUsername}`;
@@ -256,312 +208,43 @@ export const getUserClusters = async (username: string): Promise<UserClusters | 
   }
 
   return runInSandbox(async (sandbox, mountPath) => {
-    const script = `
-import json
-import math
-import os
-import sys
-from collections import defaultdict
+    const script = loadPythonScript("get_user_clusters.py");
 
-def normalize_yearly(entries):
-    bucket = []
-    if isinstance(entries, list):
-        for item in entries:
-            if not isinstance(item, dict):
-                continue
-            period = item.get("period")
-            summary = item.get("summary")
-            if not isinstance(period, str):
-                period = ""
-            if not isinstance(summary, str):
-                summary = ""
-            if not period and not summary:
-                continue
-            bucket.append({
-                "period": period,
-                "summary": summary,
-            })
-    return bucket
-
-try:
-    import pandas as pd
-except Exception:
-    print(json.dumps({"__error__": "missing-dependency"}))
-    sys.exit(0)
-
-root = sys.argv[1]
-user = sys.argv[2]
-user_path = os.path.join(root, user)
-
-if not os.path.isdir(user_path):
-    print(json.dumps({"__error__": "not-found"}))
-    sys.exit(0)
-
-hierarchy_path = os.path.join(user_path, "labeled_cluster_hierarchy.parquet")
-tweets_path = os.path.join(user_path, "clustered_tweets_df.parquet")
-groups_path = os.path.join(user_path, "group_results.json")
-ontology_path = os.path.join(user_path, "cluster_ontology_items.json")
-labels_path = os.path.join(user_path, "cluster_labels.json")
-
-if not os.path.exists(hierarchy_path) or not os.path.exists(tweets_path):
-    print(json.dumps({"clusters": []}))
-    sys.exit(0)
-
-try:
-    hierarchy_df = pd.read_parquet(
-        hierarchy_path,
-        columns=["cluster_id", "name", "summary", "low_quality_cluster", "level"],
-    )
-except Exception:
-    print(json.dumps({"__error__": "hierarchy-read"}))
-    sys.exit(0)
-
-hierarchy_df = hierarchy_df[hierarchy_df["level"] == 0].copy()
-if hierarchy_df.empty:
-    print(json.dumps({"clusters": []}))
-    sys.exit(0)
-
-hierarchy_df["cluster_id"] = hierarchy_df["cluster_id"].astype(str)
-cluster_ids = set(hierarchy_df["cluster_id"].tolist())
-name_map = {row.cluster_id: (row.name if isinstance(row.name, str) else row.cluster_id) for row in hierarchy_df.itertuples()}
-
-yearly_map = {}
-
-if os.path.exists(ontology_path):
-    try:
-        with open(ontology_path, "r", encoding="utf-8") as handle:
-            ontology_data = json.load(handle)
-        if isinstance(ontology_data, dict):
-            for key, value in ontology_data.items():
-                entry = value if isinstance(value, dict) else {}
-                cluster_key = entry.get("cluster_id")
-                if isinstance(cluster_key, str) and cluster_key:
-                    cluster_key_str = cluster_key
-                else:
-                    cluster_key_str = str(key)
-                if not cluster_key_str or cluster_key_str not in cluster_ids:
-                    continue
-                container = entry.get("ontology_items") if isinstance(entry.get("ontology_items"), dict) else entry
-                raw_list = container.get("yearly_summaries")
-                bucket = normalize_yearly(raw_list)
-                if bucket:
-                    yearly_map[cluster_key_str] = bucket
-    except Exception:
-        yearly_map = {}
-
-if not yearly_map and os.path.exists(labels_path):
-    try:
-        with open(labels_path, "r", encoding="utf-8") as handle:
-            label_data = json.load(handle)
-        if isinstance(label_data, dict):
-            for key, value in label_data.items():
-                entry = value if isinstance(value, dict) else {}
-                cluster_key = entry.get("cluster_id")
-                if isinstance(cluster_key, str) and cluster_key:
-                    cluster_key_str = cluster_key
-                else:
-                    cluster_key_str = str(key)
-                if (
-                    not cluster_key_str
-                    or cluster_key_str in yearly_map
-                    or cluster_key_str not in cluster_ids
-                ):
-                    continue
-                raw_list = entry.get("yearly_summaries")
-                bucket = normalize_yearly(raw_list)
-                if bucket:
-                    yearly_map[cluster_key_str] = bucket
-    except Exception:
-        pass
-
-tweet_columns = ["cluster", "favorite_count", "created_at", "reply_to_username"]
-try:
-    tweets_df = pd.read_parquet(tweets_path, columns=tweet_columns)
-except Exception:
-    print(json.dumps({"__error__": "tweets-read"}))
-    sys.exit(0)
-
-tweets_df["cluster"] = tweets_df["cluster"].astype(str)
-tweets_df = tweets_df[tweets_df["cluster"].isin(cluster_ids)].copy()
-
-if tweets_df.empty:
-    clusters = []
-    for row in hierarchy_df.itertuples():
-        clusters.append({
-            "id": row.cluster_id,
-            "name": row.name if isinstance(row.name, str) else row.cluster_id,
-            "summary": row.summary if isinstance(row.summary, str) else "",
-            "low_quality": str(row.low_quality_cluster) == "1",
-            "tweets_count": 0,
-            "total_likes": 0,
-            "median_likes": 0,
-            "median_date": None,
-            "tweets_per_month": "placeholder",
-            "most_replied_to": [],
-            "related_clusters": [],
-            "yearly_summaries": yearly_map.get(row.cluster_id, []),
-        })
-
-    clusters.sort(key=lambda item: item["name"])
-    print(json.dumps({"clusters": clusters}))
-    sys.exit(0)
-
-tweets_df["favorite_count"] = pd.to_numeric(tweets_df["favorite_count"], errors="coerce").fillna(0)
-tweets_df["created_at"] = pd.to_datetime(tweets_df["created_at"], errors="coerce", utc=True)
-tweets_df["reply_to_username"] = tweets_df["reply_to_username"].fillna("").astype(str)
-
-stats_df = tweets_df.groupby("cluster").agg(
-    tweets_count=("favorite_count", "size"),
-    total_likes=("favorite_count", "sum"),
-    median_likes=("favorite_count", "median"),
-)
-
-stats_map = {}
-for item in stats_df.itertuples():
-    stats_map[item.Index] = {
-        "tweets_count": int(item.tweets_count),
-        "total_likes": float(item.total_likes),
-        "median_likes": float(item.median_likes) if not math.isnan(float(item.median_likes)) else 0.0,
-    }
-
-median_dates = tweets_df.groupby("cluster")["created_at"].median()
-median_date_map = {key: value for key, value in median_dates.items() if pd.notna(value)}
-
-reply_df = tweets_df[tweets_df["reply_to_username"].astype(bool)].copy()
-reply_map = defaultdict(list)
-if not reply_df.empty:
-    reply_counts = reply_df.groupby(["cluster", "reply_to_username"]).size().reset_index(name="count")
-    for cluster_id, group_df in reply_counts.groupby("cluster"):
-        records = group_df.sort_values("count", ascending=False).head(5)
-        bucket = []
-        for record in records.itertuples():
-            username = record.reply_to_username.strip()
-            if not username:
-                continue
-            bucket.append({
-                "username": username,
-                "count": int(record.count),
-            })
-        if bucket:
-            reply_map[str(cluster_id)] = bucket
-
-related_map = defaultdict(dict)
-if os.path.exists(groups_path):
-    try:
-        with open(groups_path, "r", encoding="utf-8") as handle:
-            group_data = json.load(handle)
-        for group in group_data.get("groups", []):
-            members = []
-            for entry in group.get("members", []):
-                entry_id = str(entry.get("id") or "")
-                if not entry_id:
-                    continue
-                members.append({
-                    "id": entry_id,
-                    "name": str(entry.get("name") or name_map.get(entry_id) or entry_id),
-                })
-            if not members:
-                continue
-            for member in members:
-                others = [other for other in members if other["id"] != member["id"]]
-                if not others:
-                    continue
-                store = related_map[member["id"]]
-                for other in others:
-                    store[other["id"]] = other["name"]
-    except Exception:
-        related_map = defaultdict(dict)
-
-clusters = []
-for row in hierarchy_df.itertuples():
-    cluster_id = row.cluster_id
-    stats = stats_map.get(cluster_id, {"tweets_count": 0, "total_likes": 0.0, "median_likes": 0.0})
-    median_date = median_date_map.get(cluster_id)
-    if median_date is not None:
-        median_date_value = median_date.isoformat()
-    else:
-        median_date_value = None
-
-    total_likes_value = int(round(stats.get("total_likes", 0.0)))
-    median_likes_value = stats.get("median_likes", 0.0)
-    if math.isnan(median_likes_value):
-        median_likes_value = 0.0
-    median_likes_int = int(round(median_likes_value))
-
-    related_entries = related_map.get(cluster_id, {})
-    related_list = [
-        {"id": rel_id, "name": rel_name}
-        for rel_id, rel_name in related_entries.items()
-        if rel_id in cluster_ids
-    ]
-    related_list.sort(key=lambda item: item["name"])
-
-    clusters.append({
-        "id": cluster_id,
-        "name": row.name if isinstance(row.name, str) else cluster_id,
-        "summary": row.summary if isinstance(row.summary, str) else "",
-        "low_quality": str(row.low_quality_cluster) == "1",
-        "tweets_count": stats.get("tweets_count", 0),
-        "total_likes": total_likes_value,
-        "median_likes": median_likes_int,
-        "median_date": median_date_value,
-        "tweets_per_month": "placeholder",
-        "most_replied_to": reply_map.get(cluster_id, []),
-        "related_clusters": related_list,
-        "yearly_summaries": yearly_map.get(cluster_id, []),
-    })
-
-clusters.sort(
-    key=lambda item: (item["median_date"] is not None, item["median_date"]),
-    reverse=True,
-)
-
-print(json.dumps({"clusters": clusters}))
-    `;
-
-    const runScript = () => execPythonJSON(sandbox, script, [mountPath, cleanUsername]);
-
-    const toRecord = (value: unknown) => {
-      if (!value || typeof value !== "object") {
-        return null;
-      }
-      return value as Record<string, unknown>;
+    const runScript = async () => {
+      const payload = await execPythonJSON(sandbox, script, [mountPath, cleanUsername]);
+      return toPythonRecordResult(payload);
     };
 
-    let payload = await runScript();
-    let record = toRecord(payload);
+    let result = await runScript();
     let attemptedInstall = false;
     let notFound = false;
 
-    const handleErrorRecord = async () => {
-      if (!record) {
-        return;
+    const resolveRecord = async (): Promise<Record<string, unknown> | null> => {
+      while (!result.ok) {
+        const errorCode = result.errorCode;
+        if (errorCode === "not-found") {
+          notFound = true;
+          return null;
+        }
+        if (errorCode === "missing-dependency" && !attemptedInstall) {
+          attemptedInstall = true;
+          await ensureClusterDependencies(sandbox);
+          result = await runScript();
+          continue;
+        }
+        if (!errorCode) {
+          return null;
+        }
+        throw new Error(
+          attemptedInstall
+            ? `Cluster retrieval failed after dependency install: ${errorCode}`
+            : `Cluster retrieval failed: ${errorCode}`,
+        );
       }
-      const errorCode = record.__error__;
-      if (typeof errorCode !== "string") {
-        return;
-      }
-      if (errorCode === "not-found") {
-        notFound = true;
-        record = null;
-        return;
-      }
-      if (errorCode === "missing-dependency" && !attemptedInstall) {
-        attemptedInstall = true;
-        await installClusterDependencies(sandbox);
-        payload = await runScript();
-        record = toRecord(payload);
-        await handleErrorRecord();
-        return;
-      }
-      throw new Error(
-        attemptedInstall
-          ? `Cluster retrieval failed after dependency install: ${errorCode}`
-          : `Cluster retrieval failed: ${errorCode}`,
-      );
+      return result.record;
     };
 
-    await handleErrorRecord();
+    const record = await resolveRecord();
 
     if (!record) {
       return notFound ? null : { clusters: [] };
@@ -589,6 +272,140 @@ print(json.dumps({"clusters": clusters}))
         return value === "1" || value.toLowerCase() === "true";
       }
       return false;
+    };
+
+    const sanitizeStringArray = (value: unknown): string[] => {
+      if (!Array.isArray(value)) {
+        return [];
+      }
+      const bucket: string[] = [];
+      for (const entry of value) {
+        if (typeof entry === "string") {
+          const trimmed = entry.trim();
+          if (trimmed) {
+            bucket.push(trimmed);
+          }
+        } else if (typeof entry === "number" && Number.isFinite(entry)) {
+          bucket.push(String(entry));
+        }
+      }
+      return bucket;
+    };
+
+    const createEmptyOntology = (): ClusterOntology => ({
+      entities: [],
+      beliefsAndValues: [],
+      goals: [],
+      socialRelationships: [],
+      moodsAndEmotionalTones: [],
+      keyConcepts: [],
+    });
+
+    const mapOntologyList = <T>(
+      value: unknown,
+      mapper: (record: Record<string, unknown>) => T | null,
+    ): T[] => {
+      if (!Array.isArray(value)) {
+        return [];
+      }
+      const results: T[] = [];
+      for (const entry of value) {
+        if (!entry || typeof entry !== "object") {
+          continue;
+        }
+        const mapped = mapper(entry as Record<string, unknown>);
+        if (mapped) {
+          results.push(mapped);
+        }
+      }
+      return results;
+    };
+
+    const sanitizeOntology = (value: unknown): ClusterOntology => {
+      if (!value || typeof value !== "object") {
+        return createEmptyOntology();
+      }
+      const source = value as Record<string, unknown>;
+      return {
+        entities: mapOntologyList(source["entities"], (record) => {
+          const name = sanitizeString(record["name"]);
+          const description = sanitizeString(record["description"]);
+          if (!name && !description) {
+            return null;
+          }
+          return {
+            id: sanitizeString(record["id"]),
+            name,
+            description,
+            tweetReferences: sanitizeStringArray(record["tweet_references"]),
+          };
+        }),
+        beliefsAndValues: mapOntologyList(source["beliefs_and_values"], (record) => {
+          const belief = sanitizeString(record["belief"]);
+          const description = sanitizeString(record["description"]);
+          if (!belief && !description) {
+            return null;
+          }
+          return {
+            id: sanitizeString(record["id"]),
+            belief,
+            description,
+            tweetReferences: sanitizeStringArray(record["tweet_references"]),
+          };
+        }),
+        goals: mapOntologyList(source["goals"], (record) => {
+          const goal = sanitizeString(record["goal"]);
+          const description = sanitizeString(record["description"]);
+          if (!goal && !description) {
+            return null;
+          }
+          return {
+            id: sanitizeString(record["id"]),
+            goal,
+            description,
+            tweetReferences: sanitizeStringArray(record["tweet_references"]),
+          };
+        }),
+        socialRelationships: mapOntologyList(source["social_relationships"], (record) => {
+          const username = sanitizeString(record["username"]);
+          const interactionType = sanitizeString(record["interaction_type"]);
+          if (!username && !interactionType) {
+            return null;
+          }
+          return {
+            id: sanitizeString(record["id"]),
+            username,
+            interactionType,
+            tweetReferences: sanitizeStringArray(record["tweet_references"]),
+          };
+        }),
+        moodsAndEmotionalTones: mapOntologyList(source["moods_and_emotional_tones"], (record) => {
+          const mood = sanitizeString(record["mood"]);
+          const description = sanitizeString(record["description"]);
+          if (!mood && !description) {
+            return null;
+          }
+          return {
+            id: sanitizeString(record["id"]),
+            mood,
+            description,
+            tweetReferences: sanitizeStringArray(record["tweet_references"]),
+          };
+        }),
+        keyConcepts: mapOntologyList(source["key_concepts_and_ideas"], (record) => {
+          const concept = sanitizeString(record["concept"]);
+          const description = sanitizeString(record["description"]);
+          if (!concept && !description) {
+            return null;
+          }
+          return {
+            id: sanitizeString(record["id"]),
+            concept,
+            description,
+            tweetReferences: sanitizeStringArray(record["tweet_references"]),
+          };
+        }),
+      };
     };
 
     const clusters = data.map((entry) => {
@@ -641,6 +458,7 @@ print(json.dumps({"clusters": clusters}))
           })
           .filter((related) => related.id),
         yearlySummaries,
+        ontology: sanitizeOntology(item.ontology),
       };
     });
 
