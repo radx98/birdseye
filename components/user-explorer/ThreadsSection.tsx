@@ -147,19 +147,13 @@ export const ThreadsSection = () => {
                       <div className="border-t border-dashed border-zinc-200 dark:border-zinc-700" aria-hidden="true" />
                     )}
                     <div className="flex gap-3">
-                      {tweet.username ? (
-                        <Image
-                          src={`https://unavatar.io/twitter/${encodeURIComponent(tweet.username)}`}
-                          alt=""
-                          width={40}
-                          height={40}
-                          className="h-10 w-10 rounded-full border border-zinc-200 object-cover dark:border-zinc-700"
-                        />
-                      ) : (
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-dashed border-zinc-300 text-xs font-semibold text-zinc-500 dark:border-zinc-700 dark:text-zinc-300">
-                          ?
-                        </div>
-                      )}
+                      <Image
+                        src={tweet.avatarUrl}
+                        alt={tweet.username ? `Avatar of ${formatHandle(tweet.username)}` : "Avatar placeholder"}
+                        width={40}
+                        height={40}
+                        className="h-10 w-10 rounded-full border border-zinc-200 object-cover dark:border-zinc-700"
+                      />
                       <div className="flex flex-1 flex-col gap-2">
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
                           <div className="flex flex-wrap items-baseline gap-2">
