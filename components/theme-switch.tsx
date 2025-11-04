@@ -58,9 +58,9 @@ const resolveInitialMode = (): ThemeMode => {
 };
 
 const ThemeSwitch = () => {
-  const initialMode = resolveInitialMode();
-  const [mode, setMode] = useState<ThemeMode>(initialMode);
-  const modeRef = useRef<ThemeMode>(initialMode);
+  const [mode, setMode] = useState<ThemeMode>("system");
+  const modeRef = useRef<ThemeMode>("system");
+  const hasHydratedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -79,6 +79,8 @@ const ThemeSwitch = () => {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    if (!hasHydratedRef.current) return;
+
     modeRef.current = mode;
     try {
       localStorage.setItem(STORAGE_KEY, mode);
@@ -87,6 +89,21 @@ const ThemeSwitch = () => {
     }
     applyTheme(mode);
   }, [mode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const storedMode = resolveInitialMode();
+    modeRef.current = storedMode;
+    setMode(storedMode);
+    applyTheme(storedMode);
+    try {
+      localStorage.setItem(STORAGE_KEY, storedMode);
+    } catch {
+      // ignore write errors (e.g. private mode)
+    }
+    hasHydratedRef.current = true;
+  }, []);
 
   const renderButton = (value: ThemeMode, label: string) => {
     const isActive = mode === value;
@@ -97,7 +114,7 @@ const ThemeSwitch = () => {
         onClick={() => setMode(value)}
         aria-pressed={isActive}
         className={[
-          "inline-flex min-w-[2.25rem] items-center justify-center rounded-full border px-2 py-1 text-xs font-medium transition",
+          "inline-flex h-7 items-center justify-center rounded-full border px-2.5 text-[0.65rem] font-medium uppercase tracking-wide transition",
           isActive
             ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
             : "border-transparent bg-transparent text-zinc-600 hover:border-zinc-300 hover:bg-zinc-100/50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-100",
@@ -110,7 +127,7 @@ const ThemeSwitch = () => {
 
   return (
     <div className="flex items-center gap-2">
-      <div className="inline-flex items-center gap-0.5 rounded-full border border-zinc-200 bg-white p-0.5 dark:border-zinc-700 dark:bg-zinc-900">
+      <div className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white p-0.5 dark:border-zinc-700 dark:bg-zinc-900">
         {renderButton("light", "Light")}
         {renderButton("dark", "Dark")}
         {renderButton("system", "System")}
