@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { GetObjectCommand, ListBucketsCommand, ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
 import { BufferReader, Parser as PickleParser } from "pickleparser";
+import { fetchAvatarsByAccountId } from "@/lib/supabase-client";
 import type { ClusterOntology, UserClusters } from "@/types/cluster";
 import type { ThreadEntry, ThreadTweet, UserThreads } from "@/types/thread";
 import type { UserSummary } from "@/types/user";
@@ -42,6 +43,8 @@ type ArrowModule = typeof import("apache-arrow");
 
 let parquetEnvironmentPromise: Promise<{ parquet: ParquetModule; arrow: ArrowModule }> | null =
   null;
+
+const AVATAR_PLACEHOLDER = "/placeholder.jpg";
 
 const loadParquetEnvironment = async () => {
   if (!parquetEnvironmentPromise) {
@@ -714,7 +717,14 @@ export const getUserSummary = async (inputUsername: string): Promise<UserSummary
   }
 
   const handle = `@${username}`;
-  const avatarUrl = `https://unavatar.io/twitter/${username}`;
+  let avatarUrl = AVATAR_PLACEHOLDER;
+  if (primaryAccount) {
+    const avatars = await fetchAvatarsByAccountId([primaryAccount]);
+    const resolved = avatars.get(primaryAccount) ?? null;
+    if (resolved && resolved.trim().length) {
+      avatarUrl = resolved.trim();
+    }
+  }
 
   return {
     username,
@@ -1013,6 +1023,7 @@ export const getUserThreads = async (inputUsername: string): Promise<UserThreads
   }
 
   const tweetRows = await readParquetRecords(username, "clustered_tweets_df.parquet", [
+    "account_id",
     "tweet_id",
     "cluster",
     "cluster_prob",
@@ -1026,9 +1037,12 @@ export const getUserThreads = async (inputUsername: string): Promise<UserThreads
     return { threads: [] };
   }
 
+  const threadAccountIds = new Set<string>();
+
   const tweetLookup = new Map<
     string,
     {
+      accountId: string | null;
       cluster: string;
       clusterProb: number;
       username: string;
@@ -1044,6 +1058,10 @@ export const getUserThreads = async (inputUsername: string): Promise<UserThreads
     if (!tweetId) {
       continue;
     }
+    const accountId = sanitizeString(row["account_id"]);
+    if (accountId) {
+      threadAccountIds.add(accountId);
+    }
     const createdAtRaw = row["created_at"];
     let createdAt: string | null = null;
     if (createdAtRaw instanceof Date && !Number.isNaN(createdAtRaw.getTime())) {
@@ -1054,6 +1072,7 @@ export const getUserThreads = async (inputUsername: string): Promise<UserThreads
     }
 
     tweetLookup.set(tweetId, {
+      accountId: accountId || null,
       cluster: sanitizeString(row["cluster"]),
       clusterProb: sanitizeNumber(row["cluster_prob"]),
       username: sanitizeString(row["username"]),
@@ -1148,6 +1167,11 @@ export const getUserThreads = async (inputUsername: string): Promise<UserThreads
       const lookup = tweetLookup.get(tweetId);
       const fallback = tweetsMap[tweetId] ?? {};
 
+      const accountId =
+        lookup?.accountId ||
+        sanitizeString((fallback as Record<string, unknown>)["account_id"]) ||
+        sanitizeString((fallback as Record<string, unknown>)["user_id"]) ||
+        null;
       const username = lookup?.username || sanitizeString((fallback as Record<string, unknown>)["username"]);
       const createdAt =
         lookup?.createdAt ||
@@ -1188,9 +1212,14 @@ export const getUserThreads = async (inputUsername: string): Promise<UserThreads
       }
 
       totalFavorites += favoriteCount;
+      if (accountId) {
+        threadAccountIds.add(accountId);
+      }
 
       tweets.push({
         id: tweetId,
+        accountId,
+        avatarUrl: AVATAR_PLACEHOLDER,
         username,
         createdAt,
         fullText,
@@ -1217,6 +1246,23 @@ export const getUserThreads = async (inputUsername: string): Promise<UserThreads
       maxClusterProb,
       tweets,
     });
+  }
+
+  const avatarMap =
+    threadAccountIds.size > 0
+      ? await fetchAvatarsByAccountId(Array.from(threadAccountIds))
+      : new Map<string, string | null>();
+
+  for (const thread of threads) {
+    for (const tweet of thread.tweets) {
+      const key = tweet.accountId ? tweet.accountId.trim() : "";
+      const resolved = key ? avatarMap.get(key) : null;
+      if (resolved && resolved.trim().length) {
+        tweet.avatarUrl = resolved.trim();
+      } else {
+        tweet.avatarUrl = AVATAR_PLACEHOLDER;
+      }
+    }
   }
 
   threads.sort((a, b) => {

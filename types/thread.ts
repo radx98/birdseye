@@ -1,5 +1,7 @@
 export type ThreadTweet = {
   id: string;
+  accountId: string | null;
+  avatarUrl: string;
   username: string;
   createdAt: string | null;
   fullText: string;
