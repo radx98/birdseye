@@ -21,7 +21,7 @@ export const YearlySummariesSection = () => {
 
   if (showLoading) {
     body = (
-      <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300">
+      <div className="flex items-center justify-center rounded-3xl border border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300">
         <span className="inline-flex items-center gap-2">
           <span className="h-3 w-3 animate-ping rounded-full bg-zinc-400 dark:bg-zinc-500" aria-hidden="true" />
           Loading yearly summaries…
@@ -85,7 +85,7 @@ export const YearlySummariesSection = () => {
   }
 
   return (
-    <section className="flex flex-col gap-4 rounded-4xl bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
+    <section className="flex flex-col gap-4 rounded-lg bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
       <div>
         <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
           Yearly summaries
