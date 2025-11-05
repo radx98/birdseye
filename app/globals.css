@@ -30,3 +30,37 @@ body {
 .font-slab {
   font-family: var(--font-slab), "Times New Roman", serif;
 }
+
+@keyframes ontology-roll {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ontology-roll-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-ontology-panel-state='open'] {
+    animation: ontology-roll 200ms ease-out forwards;
+  }
+
+  [data-ontology-panel-state='closing'] {
+    animation: ontology-roll-out 200ms ease-in forwards;
+  }
+}
