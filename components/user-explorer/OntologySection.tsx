@@ -1,10 +1,11 @@
 "use client";
 
 import Image from "next/image";
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ThreadEntry } from "@/types/thread";
 import { useUserExplorer } from "./context";
 import { formatDate, formatHandle, formatNumber } from "./formatters";
+import { extractTrailingTcoLinks } from "./text";
 
 export const OntologySection = () => {
   const {
@@ -17,10 +18,25 @@ export const OntologySection = () => {
   } = useUserExplorer();
 
   const [referenceOpenMap, setReferenceOpenMap] = useState<Record<string, boolean>>({});
+  const [closingReferenceMap, setClosingReferenceMap] = useState<Record<string, boolean>>({});
+  const closingTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     setReferenceOpenMap({});
+    setClosingReferenceMap({});
+    Object.values(closingTimers.current).forEach((timer) => {
+      clearTimeout(timer);
+    });
+    closingTimers.current = {};
   }, [selectedCluster?.id]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(closingTimers.current).forEach((timer) => {
+        clearTimeout(timer);
+      });
+    };
+  }, []);
 
   type ReferenceLookupValue = {
     tweetId: string;
@@ -94,7 +110,7 @@ export const OntologySection = () => {
     const hasItems = items.length > 0;
 
     return (
-      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60">
+      <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-5 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-300">
           {title}
         </h3>
@@ -107,7 +123,10 @@ export const OntologySection = () => {
               const key = item.id || `${title}-${index}`;
               const toggleKey = `${selectedCluster?.id ?? "cluster"}::${title}::${key}`;
               const isOpen = referenceOpenMap[toggleKey] ?? false;
+              const isClosing = closingReferenceMap[toggleKey] ?? false;
+              const shouldRender = references > 0 && (isOpen || isClosing);
               const contentId = `${toggleKey}-references`;
+              const panelState = isClosing ? "closing" : "open";
 
               const resolvedReferences = Array.isArray(item.tweetReferences)
                 ? item.tweetReferences.map((referenceId) => ({
@@ -124,10 +143,45 @@ export const OntologySection = () => {
                 if (references === 0) {
                   return;
                 }
-                setReferenceOpenMap((prev) => ({
-                  ...prev,
-                  [toggleKey]: !isOpen,
-                }));
+                if (isOpen) {
+                  setReferenceOpenMap((prev) => ({
+                    ...prev,
+                    [toggleKey]: false,
+                  }));
+                  setClosingReferenceMap((prev) => ({
+                    ...prev,
+                    [toggleKey]: true,
+                  }));
+                  if (closingTimers.current[toggleKey]) {
+                    clearTimeout(closingTimers.current[toggleKey]);
+                  }
+                  closingTimers.current[toggleKey] = setTimeout(() => {
+                    setClosingReferenceMap((prev) => {
+                      if (!prev[toggleKey]) {
+                        return prev;
+                      }
+                      const { [toggleKey]: _omit, ...rest } = prev;
+                      return rest;
+                    });
+                    delete closingTimers.current[toggleKey];
+                  }, 200);
+                } else {
+                  if (closingTimers.current[toggleKey]) {
+                    clearTimeout(closingTimers.current[toggleKey]);
+                    delete closingTimers.current[toggleKey];
+                  }
+                  setClosingReferenceMap((prev) => {
+                    if (!prev[toggleKey]) {
+                      return prev;
+                    }
+                    const { [toggleKey]: _omit, ...rest } = prev;
+                    return rest;
+                  });
+                  setReferenceOpenMap((prev) => ({
+                    ...prev,
+                    [toggleKey]: true,
+                  }));
+                }
               };
 
               const buildTweetUrl = (referenceId: string, username: string | null | undefined) => {
@@ -160,25 +214,33 @@ export const OntologySection = () => {
                     <span aria-hidden="true">🔗</span>
                     <span>{`${references} ${references === 1 ? "reference" : "references"}`}</span>
                     {references > 0 ? (
-                      <span aria-hidden="true" className="ml-1 text-[0.7rem] text-blue-500/80 dark:text-blue-300/80">
-                        {isOpen ? "Hide" : "Show"}
-                      </span>
+                      <Image
+                        src="/dropdown.png"
+                        alt=""
+                        width={12}
+                        height={12}
+                        aria-hidden="true"
+                        className={`ml-1 h-2 w-2 opacity-70 transition-transform ${isOpen ? "rotate-180" : ""} dark:invert`}
+                      />
                     ) : null}
                   </button>
-                  {references > 0 && isOpen ? (
+                  {shouldRender ? (
                     <div
                       id={contentId}
-                      className="-mx-4 mt-2 p-2 flex w-[calc(100%+2rem)] flex-col gap-2 bg-white/80 text-sm text-zinc-600 transition-colors dark:bg-zinc-800/60 dark:text-zinc-200 sm:-mx-5 sm:w-[calc(100%+2.5rem)]"
+                      data-ontology-panel-state={panelState}
+                      className="relative -mx-4 mt-2 w-[calc(100%+2rem)] overflow-hidden bg-white/80 px-2 text-sm text-zinc-600 transition-colors before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-6 before:bg-gradient-to-b before:from-black/10 before:via-black/3 before:to-transparent before:content-[''] after:pointer-events-none after:absolute after:bottom-0 after:inset-x-0 after:h-6 after:bg-gradient-to-t after:from-black/10 after:via-black/3 after:to-transparent after:content-[''] dark:bg-zinc-800/60 dark:text-zinc-200 dark:before:from-black/30 dark:before:via-black/10 dark:before:to-transparent dark:after:from-black/30 dark:after:via-black/10 dark:after:to-transparent sm:-mx-5 sm:w-[calc(100%+2.5rem)]"
                     >
-                      {showLoadingState ? (
-                        <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading reference tweets…</p>
-                      ) : hasResolvedContent ? (
-                        resolvedReferences.map(({ referenceId, data }) => {
-                          if (!data) {
-                            return (
-                              <article
-                                key={`missing-${referenceId}`}
-                                className="rounded-lg border border-dashed border-zinc-200 bg-zinc-100/70 p-3 text-xs text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-400"
+                      <div className="flex max-h-[80vh] flex-col gap-2 overflow-y-auto">
+                        <div aria-hidden="true" className="h-2 shrink-0" />
+                        {showLoadingState ? (
+                          <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading reference tweets…</p>
+                        ) : hasResolvedContent ? (
+                          resolvedReferences.map(({ referenceId, data }) => {
+                            if (!data) {
+                              return (
+                                <article
+                                  key={`missing-${referenceId}`}
+                                  className="rounded-lg border border-dashed border-zinc-200 bg-zinc-100/70 p-3 text-xs text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-400"
                               >
                                 Reference tweet unavailable.
                               </article>
@@ -190,11 +252,14 @@ export const OntologySection = () => {
                           const isThreadRoot =
                             data.isThreadRoot ?? (data.thread ? data.thread.tweets[0]?.id === referenceId : false);
                           const linkTarget = buildTweetUrl(referenceId, data.username);
+                          const { body: tweetBody, trailingLinks } = extractTrailingTcoLinks(data.fullText);
+                          const hasTweetBody = Boolean(tweetBody && tweetBody.trim().length > 0);
+                          const shouldShowFallback = !hasTweetBody && trailingLinks.length === 0;
 
                           return (
                             <article
                               key={referenceId}
-                              className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-3 text-left transition-colors dark:border-zinc-700"
+                              className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-left transition-colors dark:border-zinc-700 dark:bg-zinc-900"
                             >
                               <div className="flex items-start gap-3">
                                 <Image
@@ -223,9 +288,31 @@ export const OntologySection = () => {
                                       View
                                     </a>
                                   </div>
-                                  <p className="text-sm leading-snug text-zinc-700 whitespace-pre-line dark:text-zinc-200">
-                                    {data.fullText || "Tweet content unavailable."}
-                                  </p>
+                                  {hasTweetBody ? (
+                                    <p className="text-[0.75rem] leading-snug text-zinc-700 whitespace-pre-line dark:text-zinc-200">
+                                      {tweetBody}
+                                    </p>
+                                  ) : shouldShowFallback ? (
+                                    <p className="text-[0.75rem] leading-snug text-zinc-700 whitespace-pre-line dark:text-zinc-200">
+                                      Tweet content unavailable.
+                                    </p>
+                                  ) : null}
+                                  {trailingLinks.length > 0 ? (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      {trailingLinks.map((link) => (
+                                        <a
+                                          key={link}
+                                          href={link}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-zinc-600 transition hover:text-zinc-800 dark:text-zinc-300 dark:hover:text-zinc-100"
+                                        >
+                                          <span aria-hidden="true">📎</span>
+                                          Tweet (view)
+                                        </a>
+                                      ))}
+                                    </div>
+                                  ) : null}
                                   <div className="flex flex-wrap items-center gap-2 text-[0.7rem] text-zinc-500 dark:text-zinc-400">
                                     <span className="inline-flex items-center gap-1 rounded-full bg-zinc-200/70 px-2 py-0.5 font-medium dark:bg-zinc-800/70">
                                       <span aria-hidden="true">❤️</span>
@@ -246,12 +333,14 @@ export const OntologySection = () => {
                               </div>
                             </article>
                           );
-                        })
-                      ) : (
-                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                          Reference tweets are not available for this cluster yet.
-                        </p>
-                      )}
+                          })
+                        ) : (
+                          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                            Reference tweets are not available for this cluster yet.
+                          </p>
+                        )}
+                        <div aria-hidden="true" className="h-2 shrink-0" />
+                      </div>
                     </div>
                   ) : null}
                 </li>
