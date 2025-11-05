@@ -41,9 +41,7 @@ export const SelectUserPanel = () => {
             disabled={!hasUsers || listLoading}
             className="w-full appearance-none rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 pr-12 text-base text-zinc-900 transition-colors focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500 dark:focus:ring-zinc-600"
           >
-            <option value="">
-              {listLoading ? "Loading users…" : hasUsers ? "Select a user" : "No users available"}
-            </option>
+            <option value="">{listLoading ? "Loading..." : hasUsers ? "Select a user" : "No users available"}</option>
             {selectOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
@@ -63,7 +61,7 @@ export const SelectUserPanel = () => {
       </div>
 
       {expandLoading && selectedUser && !summary && (
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">Loading user data…</p>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Loading...</p>
       )}
 
       {!hasUsers && !listLoading && (
