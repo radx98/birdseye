@@ -122,10 +122,10 @@ export const ThreadsSection = () => {
   const body = useMemo(() => {
     if (threadsLoading && !hasThreadData) {
       return (
-        <div className="flex items-center justify-center rounded-3xl border border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300">
+        <div className="flex items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300">
           <span className="inline-flex items-center gap-2">
             <span className="h-3 w-3 animate-ping rounded-full bg-zinc-400 dark:bg-zinc-500" aria-hidden="true" />
-            Loading threads…
+            Loading...
           </span>
         </div>
       );
@@ -313,7 +313,7 @@ export const ThreadsSection = () => {
           style={{
             maskImage: "linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.95) 15%, rgba(0, 0, 0, 0.95) 85%, transparent 100%)",
             WebkitMaskImage:
-              "linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.95) 15%, rgba(0, 0, 0, 0.95) 85%, transparent 100%)",
+              "linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.95) 10%, rgba(0, 0, 0, 0.95) 90%, transparent 100%)",
           }}
         />
         <div
@@ -324,7 +324,7 @@ export const ThreadsSection = () => {
           style={{
             maskImage: "linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.95) 15%, rgba(0, 0, 0, 0.95) 85%, transparent 100%)",
             WebkitMaskImage:
-              "linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.95) 15%, rgba(0, 0, 0, 0.95) 85%, transparent 100%)",
+              "linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.95) 10%, rgba(0, 0, 0, 0.95) 90%, transparent 100%)",
           }}
         />
       </div>

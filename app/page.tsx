@@ -62,44 +62,36 @@ export default async function Home() {
           <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
             Key features
           </h2>
-          <ul className="mt-6 grid auto-rows-fr gap-5 text-base text-zinc-600 transition-colors sm:grid-cols-2 dark:text-zinc-300">
-            <li className="flex h-full items-stretch gap-3 rounded-full border border-zinc-100 bg-zinc-50 pl-4 pr-6 py-2 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
-              <span className="flex aspect-square basis-[20%] max-w-[20%] items-center justify-center text-3xl">
-                <span role="img" aria-hidden="true">
-                  📊
-                </span>
+          <ul className="mt-6 grid auto-rows-fr gap-4 text-sm text-zinc-600 transition-colors sm:grid-cols-2 dark:text-zinc-300">
+            <li className="flex h-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
+              <span role="img" aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center text-2xl leading-none">
+                📊
               </span>
-              <span className="flex-1 min-w-0 self-center leading-snug">
+              <span className="flex-1 min-w-0 leading-relaxed">
                 Topics are sorted by date (newest first)
               </span>
             </li>
-            <li className="flex h-full items-stretch gap-3 rounded-full border border-zinc-100 bg-zinc-50 pl-4 pr-6 py-2 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
-              <span className="flex aspect-square basis-[20%] max-w-[20%] items-center justify-center text-3xl">
-                <span role="img" aria-hidden="true">
-                  🔍
-                </span>
+            <li className="flex h-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
+              <span role="img" aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center text-2xl leading-none">
+                🔍
               </span>
-              <span className="flex-1 min-w-0 self-center leading-snug">
+              <span className="flex-1 min-w-0 leading-relaxed">
                 Each cluster shows stats, summaries, and yearly evolution
               </span>
             </li>
-            <li className="flex h-full items-stretch gap-3 rounded-full border border-zinc-100 bg-zinc-50 pl-4 pr-6 py-2 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
-              <span className="flex aspect-square basis-[20%] max-w-[20%] items-center justify-center text-3xl">
-                <span role="img" aria-hidden="true">
-                  📈
-                </span>
+            <li className="flex h-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
+              <span role="img" aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center text-2xl leading-none">
+                📈
               </span>
-              <span className="flex-1 min-w-0 self-center leading-snug">
+              <span className="flex-1 min-w-0 leading-relaxed">
                 Timeline charts help track topic engagement over time
               </span>
             </li>
-            <li className="flex h-full items-stretch gap-3 rounded-full border border-zinc-100 bg-zinc-50 pl-4 pr-6 py-2 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
-              <span className="flex aspect-square basis-[20%] max-w-[20%] items-center justify-center text-3xl">
-                <span role="img" aria-hidden="true">
-                  🧵
-                </span>
+            <li className="flex h-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
+              <span role="img" aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center text-2xl leading-none">
+                🧵
               </span>
-              <span className="flex-1 min-w-0 self-center leading-snug">
+              <span className="flex-1 min-w-0 leading-relaxed">
                 View full threads and conversations within each topic
               </span>
             </li>

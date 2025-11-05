@@ -233,7 +233,7 @@ export const OntologySection = () => {
                       <div className="flex max-h-[80vh] flex-col gap-2 overflow-y-auto">
                         <div aria-hidden="true" className="h-2 shrink-0" />
                         {showLoadingState ? (
-                          <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading reference tweets…</p>
+                          <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading...</p>
                         ) : hasResolvedContent ? (
                           resolvedReferences.map(({ referenceId, data }) => {
                             if (!data) {
@@ -358,10 +358,10 @@ export const OntologySection = () => {
 
   if (showLoading) {
     body = (
-      <div className="flex items-center justify-center rounded-3xl border border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300">
+      <div className="flex items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300">
         <span className="inline-flex items-center gap-2">
           <span className="h-3 w-3 animate-ping rounded-full bg-zinc-400 dark:bg-zinc-500" aria-hidden="true" />
-          Loading ontology details…
+          Loading...
         </span>
       </div>
     );
