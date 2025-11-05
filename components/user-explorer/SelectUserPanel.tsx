@@ -56,7 +56,7 @@ export const SelectUserPanel = () => {
               alt=""
               width={16}
               height={16}
-              className="h-4 w-4 opacity-80 filter dark:invert dark:brightness-125 dark:opacity-90"
+              className="h-4 w-4 opacity-70 filter dark:invert dark:brightness-125 dark:opacity-90"
             />
           </span>
         </div>
