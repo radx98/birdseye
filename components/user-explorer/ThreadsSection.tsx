@@ -22,6 +22,14 @@ const formatProbability = (value: number) => {
   return `${(value * 100).toFixed(1).replace(/\.0$/, "")}%`;
 };
 
+const buildTweetUrl = (tweetId: string, username: string | null | undefined) => {
+  const handle = username ? username.replace(/^@/, "") : "";
+  if (handle) {
+    return `https://x.com/${handle}/status/${tweetId}`;
+  }
+  return `https://x.com/i/web/status/${tweetId}`;
+};
+
 export const ThreadsSection = () => {
   const {
     summary,
@@ -207,62 +215,92 @@ export const ThreadsSection = () => {
                       const { body: tweetBody, trailingLinks } = extractTrailingTcoLinks(tweet.fullText);
                       const hasTweetBody = Boolean(tweetBody && tweetBody.trim().length > 0);
                       const shouldShowFallback = !hasTweetBody && trailingLinks.length === 0;
+                      const linkTarget = tweet.id ? buildTweetUrl(tweet.id, tweet.username) : null;
 
                       return (
                         <div key={tweet.id || `${thread.id}-${index}`} className="flex flex-col gap-3">
-                          {index > 0 && (
+                          {index > 0 ? (
                             <div className="border-t border-dashed border-zinc-200 dark:border-zinc-700" aria-hidden="true" />
-                          )}
-                          <div className="flex gap-3">
-                            <Image
-                              src={tweet.avatarUrl}
-                              alt={tweet.username ? `Avatar of ${formatHandle(tweet.username)}` : "Avatar placeholder"}
-                              width={40}
-                              height={40}
-                              className="h-10 w-10 rounded-full border border-zinc-200 object-cover dark:border-zinc-700"
-                            />
-                            <div className="flex flex-1 flex-col gap-2">
-                              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                <div className="flex flex-wrap items-baseline gap-2">
-                                  <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-                                    {formatHandle(tweet.username) || "Unknown"}
-                                  </span>
-                                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                                    {formatDate(tweet.createdAt)}
-                                  </span>
-                                </div>
-                                <span className="inline-flex items-center gap-1 text-xs font-medium text-rose-600 dark:text-rose-300">
-                                  <span aria-hidden="true">❤️</span>
-                                  {formatNumber(tweet.favoriteCount)}
-                                </span>
-                              </div>
-                              {hasTweetBody ? (
-                                <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
-                                  {tweetBody}
-                                </p>
-                              ) : shouldShowFallback ? (
-                                <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
-                                  Tweet content unavailable.
-                                </p>
-                              ) : null}
-                              {trailingLinks.length > 0 ? (
-                                <div className="flex flex-wrap gap-2">
-                                  {trailingLinks.map((link) => (
+                          ) : null}
+                          <article className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-left transition-colors dark:border-zinc-700 dark:bg-zinc-900">
+                            <div className="flex items-start gap-3">
+                              <Image
+                                src={tweet.avatarUrl}
+                                alt={tweet.username ? `Avatar of ${formatHandle(tweet.username)}` : "Avatar placeholder"}
+                                width={36}
+                                height={36}
+                                className="h-9 w-9 rounded-full border border-zinc-200 object-cover dark:border-zinc-700"
+                              />
+                              <div className="flex flex-1 flex-col gap-2">
+                                <div className="flex items-baseline justify-between gap-3">
+                                  <div className="flex flex-col">
+                                    <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+                                      {formatHandle(tweet.username) || "Unknown"}
+                                    </span>
+                                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                      {formatDate(tweet.createdAt)}
+                                    </span>
+                                  </div>
+                                  {linkTarget ? (
                                     <a
-                                      key={link}
-                                      href={link}
+                                      href={linkTarget}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-zinc-600 transition hover:text-zinc-800 dark:text-zinc-300 dark:hover:text-zinc-100"
+                                      className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 transition hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
                                     >
-                                      <span aria-hidden="true">📎</span>
-                                      Tweet (view)
+                                      View
                                     </a>
-                                  ))}
+                                  ) : null}
                                 </div>
-                              ) : null}
+                                {hasTweetBody ? (
+                                  <p className="text-[0.75rem] leading-snug text-zinc-700 whitespace-pre-line dark:text-zinc-200">
+                                    {tweetBody}
+                                  </p>
+                                ) : shouldShowFallback ? (
+                                  <p className="text-[0.75rem] leading-snug text-zinc-700 whitespace-pre-line dark:text-zinc-200">
+                                    Tweet content unavailable.
+                                  </p>
+                                ) : null}
+                                {trailingLinks.length > 0 ? (
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {trailingLinks.map((link) => (
+                                      <a
+                                        key={link}
+                                        href={link}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-zinc-600 transition hover:text-zinc-800 dark:text-zinc-300 dark:hover:text-zinc-100"
+                                      >
+                                        <span aria-hidden="true">📎</span>
+                                        Tweet (view)
+                                      </a>
+                                    ))}
+                                  </div>
+                                ) : null}
+                                <div className="flex flex-wrap items-center gap-2 text-[0.7rem] text-zinc-500 dark:text-zinc-400">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-zinc-200/70 px-2 py-0.5 font-medium dark:bg-zinc-800/70">
+                                    <span aria-hidden="true">❤️</span>
+                                    {formatNumber(tweet.favoriteCount)}
+                                  </span>
+                                  {index === 0 ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-zinc-200/70 px-2 py-0.5 font-medium dark:bg-zinc-800/70">
+                                      Thread root
+                                    </span>
+                                  ) : null}
+                                  {tweet.isReply ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-zinc-200/70 px-2 py-0.5 font-medium dark:bg-zinc-800/70">
+                                      Reply
+                                    </span>
+                                  ) : null}
+                                  {tweet.isRetweet ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-zinc-200/70 px-2 py-0.5 font-medium dark:bg-zinc-800/70">
+                                      Retweet
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
                             </div>
-                          </div>
+                          </article>
                         </div>
                       );
                     })}
