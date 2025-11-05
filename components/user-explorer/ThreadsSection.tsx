@@ -178,7 +178,7 @@ export const ThreadsSection = () => {
               return (
                 <article
                   key={thread.id}
-                  className="flex flex-col gap-4 rounded-lg border border-zinc-200 bg-zinc-50/80 p-5 transition-colors dark:border-zinc-700 dark:bg-zinc-800/60 odd:bg-zinc-200/40 dark:odd:bg-zinc-700/60 flex-none w-[40%] min-w-[18rem] snap-start"
+                  className="flex flex-col gap-4 rounded-lg border border-zinc-200 bg-black/1 p-5 transition-colors dark:border-zinc-700 dark:bg-white/1 odd:bg-black/4 dark:odd:bg-white/4 flex-none w-[40%] min-w-[18rem] snap-start"
                 >
                   <div className="flex flex-col gap-3">
                     <div className="flex flex-col gap-1">
