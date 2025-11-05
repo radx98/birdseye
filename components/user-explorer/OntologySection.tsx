@@ -1,11 +1,81 @@
 "use client";
 
-import { Fragment, type ReactNode } from "react";
+import Image from "next/image";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import type { ThreadEntry } from "@/types/thread";
 import { useUserExplorer } from "./context";
-import { formatHandle } from "./formatters";
+import { formatDate, formatHandle, formatNumber } from "./formatters";
 
 export const OntologySection = () => {
-  const { summary, clustersLoading, selectedCluster, hasAvailableClusters } = useUserExplorer();
+  const {
+    summary,
+    clustersLoading,
+    selectedCluster,
+    hasAvailableClusters,
+    threadsData,
+    threadsLoading,
+  } = useUserExplorer();
+
+  const [referenceOpenMap, setReferenceOpenMap] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setReferenceOpenMap({});
+  }, [selectedCluster?.id]);
+
+  type ReferenceLookupValue = {
+    tweetId: string;
+    username: string;
+    createdAt: string | null;
+    fullText: string;
+    favoriteCount: number;
+    avatarUrl: string;
+    thread?: ThreadEntry;
+    threadLength?: number;
+    isThreadRoot?: boolean;
+  };
+
+  const referenceLookup = useMemo<Map<string, ReferenceLookupValue>>(() => {
+    const map = new Map<string, ReferenceLookupValue>();
+    const ontologyDetails = selectedCluster?.ontologyTweetDetails ?? {};
+
+    for (const [tweetId, detail] of Object.entries(ontologyDetails)) {
+      map.set(tweetId, {
+        tweetId,
+        username: detail.username,
+        createdAt: detail.createdAt ?? null,
+        fullText: detail.fullText || "Tweet content unavailable.",
+        favoriteCount: detail.favoriteCount ?? 0,
+        avatarUrl: detail.avatarUrl || "/placeholder.jpg",
+      });
+    }
+
+    const threads = threadsData?.threads ?? [];
+    for (const thread of threads) {
+      const threadLength = thread.tweets.length;
+      thread.tweets.forEach((tweet, index) => {
+        if (!tweet.id) {
+          return;
+        }
+        const existing = map.get(tweet.id);
+        map.set(tweet.id, {
+          tweetId: tweet.id,
+          username: tweet.username || existing?.username || "",
+          createdAt: tweet.createdAt ?? existing?.createdAt ?? null,
+          fullText: tweet.fullText || existing?.fullText || "Tweet content unavailable.",
+          favoriteCount:
+            Number.isFinite(tweet.favoriteCount) && tweet.favoriteCount !== undefined
+              ? tweet.favoriteCount
+              : existing?.favoriteCount ?? 0,
+          avatarUrl: tweet.avatarUrl || existing?.avatarUrl || "/placeholder.jpg",
+          thread,
+          threadLength,
+          isThreadRoot: index === 0,
+        });
+      });
+    }
+
+    return map;
+  }, [selectedCluster, threadsData]);
 
   if (!summary) {
     return null;
@@ -35,6 +105,38 @@ export const OntologySection = () => {
               const secondary = getDescription(item).trim();
               const references = Array.isArray(item.tweetReferences) ? item.tweetReferences.length : 0;
               const key = item.id || `${title}-${index}`;
+              const toggleKey = `${selectedCluster?.id ?? "cluster"}::${title}::${key}`;
+              const isOpen = referenceOpenMap[toggleKey] ?? false;
+              const contentId = `${toggleKey}-references`;
+
+              const resolvedReferences = Array.isArray(item.tweetReferences)
+                ? item.tweetReferences.map((referenceId) => ({
+                    referenceId,
+                    data: referenceLookup.get(referenceId),
+                  }))
+                : [];
+
+              const hasResolvedContent = resolvedReferences.some((entry) => Boolean(entry.data));
+              const showLoadingState =
+                threadsLoading && references > 0 && resolvedReferences.every((entry) => !entry.data);
+
+              const handleToggle = () => {
+                if (references === 0) {
+                  return;
+                }
+                setReferenceOpenMap((prev) => ({
+                  ...prev,
+                  [toggleKey]: !isOpen,
+                }));
+              };
+
+              const buildTweetUrl = (referenceId: string, username: string | null | undefined) => {
+                const handle = username ? username.replace(/^@/, "") : "";
+                if (handle) {
+                  return `https://x.com/${handle}/status/${referenceId}`;
+                }
+                return `https://x.com/i/web/status/${referenceId}`;
+              };
 
               return (
                 <li key={key} className="flex flex-col gap-2">
@@ -50,11 +152,108 @@ export const OntologySection = () => {
                     type="button"
                     disabled={references === 0}
                     aria-disabled={references === 0}
+                    onClick={handleToggle}
+                    aria-expanded={isOpen}
+                    aria-controls={contentId}
                     className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 transition hover:text-blue-500 disabled:cursor-not-allowed disabled:text-zinc-400 dark:text-blue-400 dark:hover:text-blue-300"
                   >
                     <span aria-hidden="true">🔗</span>
                     <span>{`${references} ${references === 1 ? "reference" : "references"}`}</span>
+                    {references > 0 ? (
+                      <span aria-hidden="true" className="ml-1 text-[0.7rem] text-blue-500/80 dark:text-blue-300/80">
+                        {isOpen ? "Hide" : "Show"}
+                      </span>
+                    ) : null}
                   </button>
+                  {references > 0 && isOpen ? (
+                    <div
+                      id={contentId}
+                      className="-mx-4 mt-2 p-2 flex w-[calc(100%+2rem)] flex-col gap-2 bg-white/80 text-sm text-zinc-600 transition-colors dark:bg-zinc-800/60 dark:text-zinc-200 sm:-mx-5 sm:w-[calc(100%+2.5rem)]"
+                    >
+                      {showLoadingState ? (
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading reference tweets…</p>
+                      ) : hasResolvedContent ? (
+                        resolvedReferences.map(({ referenceId, data }) => {
+                          if (!data) {
+                            return (
+                              <article
+                                key={`missing-${referenceId}`}
+                                className="rounded-lg border border-dashed border-zinc-200 bg-zinc-100/70 p-3 text-xs text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-400"
+                              >
+                                Reference tweet unavailable.
+                              </article>
+                            );
+                          }
+
+                          const threadLength =
+                            data.threadLength ?? (data.thread ? data.thread.tweets.length : undefined);
+                          const isThreadRoot =
+                            data.isThreadRoot ?? (data.thread ? data.thread.tweets[0]?.id === referenceId : false);
+                          const linkTarget = buildTweetUrl(referenceId, data.username);
+
+                          return (
+                            <article
+                              key={referenceId}
+                              className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-3 text-left transition-colors dark:border-zinc-700"
+                            >
+                              <div className="flex items-start gap-3">
+                                <Image
+                                  src={data.avatarUrl}
+                                  alt={data.username ? `Avatar of ${formatHandle(data.username)}` : "Tweet avatar"}
+                                  width={36}
+                                  height={36}
+                                  className="h-9 w-9 rounded-full border border-zinc-200 object-cover dark:border-zinc-700"
+                                />
+                                <div className="flex flex-1 flex-col gap-2">
+                                  <div className="flex items-baseline justify-between gap-3">
+                                    <div className="flex flex-col">
+                                      <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+                                        {formatHandle(data.username) || "Unknown"}
+                                      </span>
+                                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                        {formatDate(data.createdAt)}
+                                      </span>
+                                    </div>
+                                    <a
+                                      href={linkTarget}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 transition hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
+                                    >
+                                      View
+                                    </a>
+                                  </div>
+                                  <p className="text-sm leading-snug text-zinc-700 whitespace-pre-line dark:text-zinc-200">
+                                    {data.fullText || "Tweet content unavailable."}
+                                  </p>
+                                  <div className="flex flex-wrap items-center gap-2 text-[0.7rem] text-zinc-500 dark:text-zinc-400">
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-zinc-200/70 px-2 py-0.5 font-medium dark:bg-zinc-800/70">
+                                      <span aria-hidden="true">❤️</span>
+                                      {formatNumber(data.favoriteCount)}
+                                    </span>
+                                    {typeof threadLength === "number" && threadLength > 0 ? (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-zinc-200/70 px-2 py-0.5 font-medium dark:bg-zinc-800/70">
+                                        {threadLength === 1 ? "Single tweet" : `${threadLength} tweets in thread`}
+                                      </span>
+                                    ) : null}
+                                    {isThreadRoot ? (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-zinc-200/70 px-2 py-0.5 font-medium dark:bg-zinc-800/70">
+                                        Thread root
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        })
+                      ) : (
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                          Reference tweets are not available for this cluster yet.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
                 </li>
               );
             })}

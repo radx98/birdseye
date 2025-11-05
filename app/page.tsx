@@ -119,7 +119,7 @@ export default async function Home() {
                   Select a User
                 </h2>
                 <p className="mt-2 text-sm text-zinc-600 transition-colors dark:text-zinc-400">
-                  Choose a user to explore. Once you click Explore, Birdseye loads clusters, timelines, and
+                  Choose a user to explore. As soon as you pick someone, Birdseye loads clusters, timelines, and
                   threads tailored to that account.
                 </p>
               </div>

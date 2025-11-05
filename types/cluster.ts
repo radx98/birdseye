@@ -64,6 +64,16 @@ export type ClusterOntology = {
   keyConcepts: OntologyConcept[];
 };
 
+export type ClusterOntologyReferenceTweet = {
+  tweetId: string;
+  username: string;
+  accountId: string;
+  createdAt: string | null;
+  fullText: string;
+  favoriteCount: number;
+  avatarUrl: string;
+};
+
 export type ClusterInfo = {
   id: string;
   name: string;
@@ -78,6 +88,7 @@ export type ClusterInfo = {
   relatedClusters: RelatedCluster[];
   yearlySummaries: YearlySummary[];
   ontology: ClusterOntology;
+  ontologyTweetDetails: Record<string, ClusterOntologyReferenceTweet>;
 };
 
 export type UserClusters = {

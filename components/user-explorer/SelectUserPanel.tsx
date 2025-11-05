@@ -25,7 +25,6 @@ export const SelectUserPanel = () => {
     summary,
     expandLoading,
     handleSelection,
-    handleExpand,
   } = useUserExplorer();
 
   const onSelectionChange = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -34,7 +33,7 @@ export const SelectUserPanel = () => {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center">
+      <div className="flex w-full flex-col gap-4">
         <div className="relative flex flex-1 flex-col">
           <select
             value={selectedUser}
@@ -43,7 +42,7 @@ export const SelectUserPanel = () => {
             className="w-full appearance-none rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 pr-12 text-base text-zinc-900 transition-colors focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500 dark:focus:ring-zinc-600"
           >
             <option value="">
-              {listLoading ? "Loading users…" : hasUsers ? "Choose a user" : "No users available"}
+              {listLoading ? "Loading users…" : hasUsers ? "Select a user" : "No users available"}
             </option>
             {selectOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -55,21 +54,17 @@ export const SelectUserPanel = () => {
             <Image
               src="/dropdown.png"
               alt=""
-              width={20}
-              height={20}
-              className="h-5 w-5 opacity-80 filter dark:invert dark:brightness-125 dark:opacity-90"
+              width={16}
+              height={16}
+              className="h-4 w-4 opacity-80 filter dark:invert dark:brightness-125 dark:opacity-90"
             />
           </span>
         </div>
-        <button
-          type="button"
-          onClick={handleExpand}
-          disabled={!selectedUser || expandLoading}
-          className="inline-flex min-w-[8rem] items-center justify-center rounded-lg bg-zinc-900 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-        >
-          {expandLoading ? "Loading…" : "Explore"}
-        </button>
       </div>
+
+      {expandLoading && selectedUser && !summary && (
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Loading user data…</p>
+      )}
 
       {!hasUsers && !listLoading && (
         <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300">
