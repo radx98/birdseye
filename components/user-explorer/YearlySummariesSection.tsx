@@ -1,23 +1,29 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
 import { useUserExplorer } from "./context";
+
+const stripMarkdownLinks = (value?: string | null) =>
+  value ? value.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1") : value ?? "";
 
 export const YearlySummariesSection = () => {
   const { summary, clustersLoading, selectedCluster, hasAvailableClusters } = useUserExplorer();
-  const [activeIndexes, setActiveIndexes] = useState<Record<string, number>>({});
 
   if (!summary) {
     return null;
   }
 
-  const clusterId = selectedCluster?.id ?? null;
-  const yearlySummaries = selectedCluster?.yearlySummaries ?? [];
-  const activeIndex = clusterId ? activeIndexes[clusterId] ?? 0 : 0;
+  const yearlySummaries = [...(selectedCluster?.yearlySummaries ?? [])].sort((a, b) => {
+    const aDate = Date.parse(a.period ?? "");
+    const bDate = Date.parse(b.period ?? "");
+    if (Number.isNaN(aDate) || Number.isNaN(bDate)) {
+      return (b.period ?? "").localeCompare(a.period ?? "");
+    }
+    return bDate - aDate;
+  });
   const hasEntries = yearlySummaries.length > 0;
   const showLoading = clustersLoading && !hasAvailableClusters;
 
-  let body: ReactNode;
+  let body;
 
   if (showLoading) {
     body = (
@@ -41,51 +47,30 @@ export const YearlySummariesSection = () => {
       </div>
     );
   } else {
-    const safeIndex = Math.min(activeIndex, yearlySummaries.length - 1);
-    const activeEntry = yearlySummaries[safeIndex];
-    const summaryText = activeEntry.summary || "No summary available for this period.";
-
     body = (
-      <div className="flex flex-col gap-5">
-        <div className="flex gap-3 overflow-x-auto rounded-2xl border border-zinc-200 bg-zinc-50 p-2 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60">
-          {yearlySummaries.map((entry, index) => {
-            const isActive = index === safeIndex;
-            return (
-              <button
-                key={`${entry.period}-${index}`}
-                type="button"
-                onClick={() => {
-                  if (!clusterId) return;
-                  setActiveIndexes((prev) => {
-                    if (prev[clusterId] === index) {
-                      return prev;
-                    }
-                    return { ...prev, [clusterId]: index };
-                  });
-                }}
-                className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900"
-                    : "bg-white text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-                }`}
-              >
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {yearlySummaries.map((entry) => {
+          const summaryText =
+            stripMarkdownLinks(entry.summary) || "No summary available for this period.";
+
+          return (
+            <div
+              key={entry.period}
+              className="rounded-lg border border-zinc-200 bg-zinc-50 p-5 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60"
+            >
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-300">
                 {entry.period}
-              </button>
-            );
-          })}
-        </div>
-        <div className="rounded-3xl border border-zinc-200 bg-white p-6 transition-colors dark:border-zinc-700 dark:bg-zinc-900">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-300">
-            {activeEntry.period}
-          </h3>
-          <p className="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-300">{summaryText}</p>
-        </div>
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-300">{summaryText}</p>
+            </div>
+          );
+        })}
       </div>
     );
   }
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
+    <section className="flex flex-col gap-6 rounded-lg bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
       <div>
         <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
           Yearly summaries

@@ -776,6 +776,8 @@ export const getUserClusters = async (inputUsername: string): Promise<UserCluste
   const ontologyData = await readJsonFile<Record<string, unknown>>(username, "cluster_ontology_items.json");
   const labelsData = await readJsonFile<Record<string, unknown>>(username, "cluster_labels.json");
   const groupData = await readJsonFile<Record<string, unknown>>(username, "group_results.json");
+  const tweetIdMaps =
+    (await readJsonFile<Record<string, Record<string, string>>>(username, "local_tweet_id_maps.json")) ?? {};
 
   const yearlyMap = new Map<string, { period: string; summary: string }[]>();
   const ontologyMap = new Map<string, ClusterOntology>();
@@ -850,10 +852,14 @@ export const getUserClusters = async (inputUsername: string): Promise<UserCluste
   }
 
   const tweetRows = await readParquetRecords(username, "clustered_tweets_df.parquet", [
+    "tweet_id",
     "cluster",
     "favorite_count",
     "created_at",
     "reply_to_username",
+    "username",
+    "full_text",
+    "account_id",
   ]);
 
   const statsMap = new Map<
@@ -864,6 +870,17 @@ export const getUserClusters = async (inputUsername: string): Promise<UserCluste
       count: number;
       timestamps: number[];
       replies: Map<string, number>;
+      referenceTweets: Map<
+        string,
+        {
+          tweetId: string;
+          username: string;
+          accountId: string;
+          createdAt: string | null;
+          fullText: string;
+          favoriteCount: number;
+        }
+      >;
     }
   >();
 
@@ -880,6 +897,7 @@ export const getUserClusters = async (inputUsername: string): Promise<UserCluste
         count: 0,
         timestamps: [],
         replies: new Map<string, number>(),
+        referenceTweets: new Map(),
       };
 
     const favorite = sanitizeNumber(row["favorite_count"]);
@@ -905,12 +923,113 @@ export const getUserClusters = async (inputUsername: string): Promise<UserCluste
       stats.replies.set(replyTo, (stats.replies.get(replyTo) ?? 0) + 1);
     }
 
+    const tweetId = sanitizeString(row["tweet_id"]);
+    if (tweetId) {
+      const usernameValue = sanitizeString(row["username"]);
+      const fullText = sanitizeString(row["full_text"]);
+      const accountId = sanitizeString(row["account_id"]);
+      let createdAt: string | null = null;
+      const tweetCreatedAtRaw = row["created_at"];
+      if (tweetCreatedAtRaw instanceof Date) {
+        createdAt = tweetCreatedAtRaw.toISOString();
+      } else {
+        const createdAtText = sanitizeString(tweetCreatedAtRaw);
+        createdAt = createdAtText || null;
+      }
+      stats.referenceTweets.set(tweetId, {
+        tweetId,
+        username: usernameValue,
+        accountId,
+        createdAt,
+        fullText,
+        favoriteCount: Math.round(favorite),
+      });
+    }
+
     statsMap.set(clusterId, stats);
   }
+
+  const resolveTweetReferences = (clusterId: string, references: string[]): string[] => {
+    if (!references.length) {
+      return [];
+    }
+    const mapForCluster = tweetIdMaps?.[clusterId] ?? {};
+    const resolved: string[] = [];
+    for (const reference of references) {
+      const normalized = sanitizeString(reference);
+      if (!normalized) {
+        continue;
+      }
+      const mapped = sanitizeString(mapForCluster[normalized]) || normalized;
+      resolved.push(mapped);
+    }
+    return resolved;
+  };
+
+  const referenceAccountIds = new Set<string>();
+  const remapOntologyReferences = (clusterId: string, ontology: ClusterOntology, collector: Set<string>): ClusterOntology => {
+    const remapList = <T extends { tweetReferences: string[] }>(list: T[]): T[] =>
+      list.map((item) => {
+        const mapped = resolveTweetReferences(clusterId, item.tweetReferences);
+        for (const referenceId of mapped) {
+          collector.add(referenceId);
+        }
+        return {
+          ...item,
+          tweetReferences: mapped,
+        };
+      });
+
+    return {
+      entities: remapList(ontology.entities),
+      beliefsAndValues: remapList(ontology.beliefsAndValues),
+      goals: remapList(ontology.goals),
+      socialRelationships: remapList(ontology.socialRelationships),
+      moodsAndEmotionalTones: remapList(ontology.moodsAndEmotionalTones),
+      keyConcepts: remapList(ontology.keyConcepts),
+    };
+  };
 
   const clusters = hierarchy.map((row) => {
     const clusterId = sanitizeString(row["cluster_id"]);
     const stats = statsMap.get(clusterId);
+    const referencedIds = new Set<string>();
+    const remappedOntology = remapOntologyReferences(
+      clusterId,
+      ontologyMap.get(clusterId) ?? normalizeOntology({}),
+      referencedIds,
+    );
+    const referenceDetailsMap = new Map<
+      string,
+      {
+        tweetId: string;
+        username: string;
+        accountId: string;
+        createdAt: string | null;
+        fullText: string;
+        favoriteCount: number;
+        avatarUrl: string;
+      }
+    >();
+
+    for (const referenceId of referencedIds) {
+      const detail = stats?.referenceTweets.get(referenceId);
+      if (!detail) {
+        continue;
+      }
+      if (detail.accountId) {
+        referenceAccountIds.add(detail.accountId);
+      }
+      referenceDetailsMap.set(referenceId, {
+        tweetId: detail.tweetId,
+        username: detail.username,
+        accountId: detail.accountId,
+        createdAt: detail.createdAt,
+        fullText: detail.fullText,
+        favoriteCount: detail.favoriteCount,
+        avatarUrl: AVATAR_PLACEHOLDER,
+      });
+    }
     const replies =
       stats && stats.replies.size
         ? Array.from(stats.replies.entries())
@@ -943,9 +1062,21 @@ export const getUserClusters = async (inputUsername: string): Promise<UserCluste
       mostRepliedTo: replies,
       relatedClusters,
       yearlySummaries: yearlyMap.get(clusterId) ?? [],
-      ontology: ontologyMap.get(clusterId) ?? normalizeOntology({}),
+      ontology: remappedOntology,
+      ontologyTweetDetails: Object.fromEntries(referenceDetailsMap),
     };
   });
+
+  if (referenceAccountIds.size > 0) {
+    const avatars = await fetchAvatarsByAccountId(Array.from(referenceAccountIds));
+    for (const cluster of clusters) {
+      const entries = cluster.ontologyTweetDetails ? Object.values(cluster.ontologyTweetDetails) : [];
+      for (const detail of entries) {
+        const resolved = detail.accountId ? avatars.get(detail.accountId) : null;
+        detail.avatarUrl = resolved && resolved.trim().length ? resolved.trim() : AVATAR_PLACEHOLDER;
+      }
+    }
+  }
 
   clusters.sort((a, b) => {
     const aHasDate = a.medianDate ? 1 : 0;

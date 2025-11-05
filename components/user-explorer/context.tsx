@@ -36,7 +36,6 @@ export type ExplorerContextValue = {
   threadsLoading: boolean;
   threadsError: string | null;
   handleSelection: (value: string) => void;
-  handleExpand: () => Promise<void>;
   hideLowQuality: boolean;
   toggleHideLowQuality: () => void;
   filteredClusters: ClusterInfo[];
@@ -90,11 +89,12 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
   const summaryCacheRef = useRef<SummaryCache>(new Map());
   const clusterCacheRef = useRef<ClusterCache>(new Map());
   const threadCacheRef = useRef<ThreadCache>(new Map());
+  const activeUserRef = useRef<string>("");
 
   useEffect(() => {
     setOptions(users);
-    if (users.length > 0 && !selectedUser) {
-      setSelectedUser(users[0]);
+    if (selectedUser && !users.includes(selectedUser)) {
+      setSelectedUser("");
     }
   }, [users, selectedUser]);
 
@@ -141,6 +141,32 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
   }, [users]);
 
   useEffect(() => {
+    activeUserRef.current = selectedUser;
+  }, [selectedUser]);
+
+  useEffect(() => {
+    if (selectedUser) {
+      return;
+    }
+    setExpandLoading(false);
+    setSummary(null);
+    setSummaryError(null);
+    setClustersData(null);
+    setClustersLoading(false);
+    setClustersError(null);
+    setThreadsData(null);
+    setThreadsLoading(false);
+    setThreadsError(null);
+    setSelectedClusterId(null);
+    setHideLowQuality(false);
+    setHideReplies(false);
+    setHideRetweets(false);
+    setHideIncompleteThreads(false);
+    setThreadSortKeyState("favorite-count");
+    setThreadSortAscendingState(false);
+  }, [selectedUser]);
+
+  useEffect(() => {
     if (!clustersData) {
       setSelectedClusterId(null);
       return;
@@ -169,6 +195,7 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
 
   const handleSelection = useCallback((value: string) => {
     setSelectedUser(value);
+    setExpandLoading(false);
     setSummaryError(null);
     setClustersError(null);
     setThreadsError(null);
@@ -186,106 +213,167 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     setThreadSortAscendingState(false);
   }, []);
 
-  const handleExpand = useCallback(async () => {
-    if (!selectedUser) return;
-
-    const cacheKey = selectedUser;
-    setExpandLoading(true);
-    setSummaryError(null);
-    setClustersError(null);
-    setThreadsError(null);
-    setClustersLoading(false);
-    setThreadsLoading(false);
-
-    try {
-      const cachedSummary = summaryCacheRef.current.get(cacheKey);
-      let summaryLoadedSuccessfully = false;
-
-      if (cachedSummary) {
-        setSummary(cachedSummary);
-        summaryLoadedSuccessfully = true;
-      } else {
-        try {
-          const res = await fetch(`/api/users/${encodeURIComponent(cacheKey)}`, { cache: "no-store" });
-          const data = await res.json();
-          if (!res.ok) {
-            const message = typeof data?.error === "string" ? data.error : "Unable to load user info.";
-            throw new Error(message);
-          }
-          summaryCacheRef.current.set(cacheKey, data);
-          setSummary(data);
-          summaryLoadedSuccessfully = true;
-        } catch (error) {
-          setSummary(null);
-          setSummaryError(error instanceof Error ? error.message : "Unexpected error while loading user info.");
-        }
-      }
-
-      if (!summaryLoadedSuccessfully) {
-        setClustersData(null);
-        setClustersLoading(false);
-        setThreadsData(null);
-        setThreadsLoading(false);
+  const loadUserData = useCallback(
+    async (username: string) => {
+      if (!username) {
         return;
       }
 
-      const loadClusters = async () => {
-        const cachedClusters = clusterCacheRef.current.get(cacheKey);
-        if (cachedClusters) {
-          setClustersData(cachedClusters);
-          setClustersLoading(false);
-          return;
-        }
-        setClustersData(null);
-        setClustersLoading(true);
-        try {
-          const res = await fetch(`/api/users/${encodeURIComponent(cacheKey)}/clusters`, { cache: "no-store" });
-          const data = await res.json();
-          if (!res.ok) {
-            const message = typeof data?.error === "string" ? data.error : "Unable to load clusters.";
-            throw new Error(message);
+      const isCurrentSelection = () => activeUserRef.current === username;
+      if (!isCurrentSelection()) {
+        return;
+      }
+
+      setExpandLoading(true);
+      setSummaryError(null);
+      setClustersError(null);
+      setThreadsError(null);
+      setClustersLoading(false);
+      setThreadsLoading(false);
+
+      try {
+        const cachedSummary = summaryCacheRef.current.get(username);
+        let summaryLoadedSuccessfully = false;
+
+        if (cachedSummary) {
+          if (!isCurrentSelection()) {
+            return;
           }
-          clusterCacheRef.current.set(cacheKey, data);
-          setClustersData(data);
-        } catch (error) {
+          setSummary(cachedSummary);
+          summaryLoadedSuccessfully = true;
+        } else {
+          try {
+            const res = await fetch(`/api/users/${encodeURIComponent(username)}`, { cache: "no-store" });
+            const data = await res.json();
+            if (!res.ok) {
+              const message = typeof data?.error === "string" ? data.error : "Unable to load user info.";
+              throw new Error(message);
+            }
+            summaryCacheRef.current.set(username, data);
+            if (!isCurrentSelection()) {
+              return;
+            }
+            setSummary(data);
+            summaryLoadedSuccessfully = true;
+          } catch (error) {
+            if (!isCurrentSelection()) {
+              return;
+            }
+            setSummary(null);
+            setSummaryError(error instanceof Error ? error.message : "Unexpected error while loading user info.");
+          }
+        }
+
+        if (!summaryLoadedSuccessfully) {
+          if (!isCurrentSelection()) {
+            return;
+          }
           setClustersData(null);
-          setClustersError(error instanceof Error ? error.message : "Unexpected error while loading clusters.");
-        } finally {
           setClustersLoading(false);
-        }
-      };
-
-      const loadThreads = async () => {
-        const cachedThreads = threadCacheRef.current.get(cacheKey);
-        if (cachedThreads) {
-          setThreadsData(cachedThreads);
+          setThreadsData(null);
           setThreadsLoading(false);
           return;
         }
-        setThreadsData(null);
-        setThreadsLoading(true);
-        try {
-          const res = await fetch(`/api/users/${encodeURIComponent(cacheKey)}/threads`, { cache: "no-store" });
-          const data = await res.json();
-          if (!res.ok) {
-            const message = typeof data?.error === "string" ? data.error : "Unable to load threads.";
-            throw new Error(message);
-          }
-          threadCacheRef.current.set(cacheKey, data);
-          setThreadsData(data);
-        } catch (error) {
-          setThreadsData(null);
-          setThreadsError(error instanceof Error ? error.message : "Unexpected error while loading threads.");
-        } finally {
-          setThreadsLoading(false);
-        }
-      };
 
-      await Promise.all([loadClusters(), loadThreads()]);
-    } finally {
-      setExpandLoading(false);
+        const loadClusters = async () => {
+          const cachedClusters = clusterCacheRef.current.get(username);
+          if (cachedClusters) {
+            if (!isCurrentSelection()) {
+              return;
+            }
+            setClustersData(cachedClusters);
+            setClustersLoading(false);
+            return;
+          }
+          if (!isCurrentSelection()) {
+            return;
+          }
+          setClustersData(null);
+          setClustersLoading(true);
+          try {
+            const res = await fetch(`/api/users/${encodeURIComponent(username)}/clusters`, { cache: "no-store" });
+            const data = await res.json();
+            if (!res.ok) {
+              const message = typeof data?.error === "string" ? data.error : "Unable to load clusters.";
+              throw new Error(message);
+            }
+            clusterCacheRef.current.set(username, data);
+            if (!isCurrentSelection()) {
+              return;
+            }
+            setClustersData(data);
+          } catch (error) {
+            if (!isCurrentSelection()) {
+              return;
+            }
+            setClustersData(null);
+            setClustersError(error instanceof Error ? error.message : "Unexpected error while loading clusters.");
+          } finally {
+            if (!isCurrentSelection()) {
+              return;
+            }
+            setClustersLoading(false);
+          }
+        };
+
+        const loadThreads = async () => {
+          const cachedThreads = threadCacheRef.current.get(username);
+          if (cachedThreads) {
+            if (!isCurrentSelection()) {
+              return;
+            }
+            setThreadsData(cachedThreads);
+            setThreadsLoading(false);
+            return;
+          }
+          if (!isCurrentSelection()) {
+            return;
+          }
+          setThreadsData(null);
+          setThreadsLoading(true);
+          try {
+            const res = await fetch(`/api/users/${encodeURIComponent(username)}/threads`, { cache: "no-store" });
+            const data = await res.json();
+            if (!res.ok) {
+              const message = typeof data?.error === "string" ? data.error : "Unable to load threads.";
+              throw new Error(message);
+            }
+            threadCacheRef.current.set(username, data);
+            if (!isCurrentSelection()) {
+              return;
+            }
+            setThreadsData(data);
+          } catch (error) {
+            if (!isCurrentSelection()) {
+              return;
+            }
+            setThreadsData(null);
+            setThreadsError(error instanceof Error ? error.message : "Unexpected error while loading threads.");
+          } finally {
+            if (!isCurrentSelection()) {
+              return;
+            }
+            setThreadsLoading(false);
+          }
+        };
+
+        await Promise.all([loadClusters(), loadThreads()]);
+      } finally {
+        if (!isCurrentSelection()) {
+          return;
+        }
+        setExpandLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!selectedUser) {
+      return;
     }
-  }, [selectedUser]);
+    void loadUserData(selectedUser);
+  }, [selectedUser, loadUserData]);
 
   const toggleHideLowQuality = useCallback(() => {
     setHideLowQuality((prev) => !prev);
@@ -416,7 +504,6 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     threadsLoading,
     threadsError,
     handleSelection,
-    handleExpand,
     hideLowQuality,
     toggleHideLowQuality,
     filteredClusters,

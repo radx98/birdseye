@@ -30,7 +30,7 @@ export const TweetsOverTimeSection = () => {
           </span>
         </div>
       ) : (
-        <div className="flex min-h-[16rem] items-center justify-center rounded-3xl border border-dashed border-zinc-300 bg-zinc-50/50 text-sm text-zinc-600 transition-colors dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-300">
+        <div className="flex min-h-[16rem] items-center justify-center rounded-lg border border-dashed border-zinc-300 bg-zinc-50/50 text-sm text-zinc-600 transition-colors dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-300">
           Timeline chart placeholder (data coming soon).
         </div>
       )}

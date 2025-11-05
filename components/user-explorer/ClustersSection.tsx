@@ -3,6 +3,12 @@
 import { useUserExplorer } from "./context";
 import { formatDate, formatHandle, formatNumber } from "./formatters";
 
+const stripMarkdownLinks = (value?: string | null) =>
+  value ? value.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1") : value ?? "";
+
+const normalizeHandle = (value?: string | null) =>
+  value ? value.replace(/^@/, "").trim().toLowerCase() : "";
+
 export const ClustersSection = () => {
   const {
     summary,
@@ -179,7 +185,7 @@ export const ClustersSection = () => {
                   </div>
                 </div>
                 <div className="mt-4 text-sm text-zinc-600 transition-colors dark:text-zinc-300">
-                  {selectedCluster.summary || "No summary available for this cluster."}
+                  {stripMarkdownLinks(selectedCluster.summary) || "No summary available for this cluster."}
                 </div>
               </div>
 
@@ -188,15 +194,24 @@ export const ClustersSection = () => {
                   Most replied to
                 </h3>
                 <ul className="mt-3 space-y-2 text-sm text-zinc-600 dark:text-zinc-300">
-                  {selectedCluster.mostRepliedTo.length > 0 ? (
-                    selectedCluster.mostRepliedTo.map((entry) => (
-                      <li key={entry.username}>
-                        {formatHandle(entry.username)} ({formatNumber(entry.count)})
-                      </li>
-                    ))
-                  ) : (
-                    <li>No reply data available.</li>
-                  )}
+                  {(() => {
+                    const currentHandle = normalizeHandle(summary?.handle);
+                    const filtered = selectedCluster.mostRepliedTo.filter(
+                      (entry) => normalizeHandle(entry.username) !== currentHandle,
+                    );
+                    const topFive = filtered
+                      .sort((a, b) => b.count - a.count)
+                      .slice(0, 5);
+                    return topFive.length > 0 ? (
+                      topFive.map((entry) => (
+                        <li key={entry.username}>
+                          {formatHandle(entry.username)} ({formatNumber(entry.count)})
+                        </li>
+                      ))
+                    ) : (
+                      <li>No reply data available.</li>
+                    );
+                  })()}
                 </ul>
               </div>
 
@@ -207,7 +222,15 @@ export const ClustersSection = () => {
                 <ul className="mt-3 space-y-2 text-sm text-zinc-600 dark:text-zinc-300">
                   {selectedCluster.relatedClusters.length > 0 ? (
                     selectedCluster.relatedClusters.map((related) => (
-                      <li key={related.id}>{related.name || related.id}</li>
+                      <li key={related.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedClusterId(related.id)}
+                          className="inline-flex items-center gap-2 rounded-lg px-2 py-1 text-left transition-colors hover:bg-zinc-200 dark:hover:bg-zinc-800/80"
+                        >
+                          <span>{related.name || related.id}</span>
+                        </button>
+                      </li>
                     ))
                   ) : (
                     <li>No related clusters available.</li>
