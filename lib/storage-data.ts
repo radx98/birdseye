@@ -892,12 +892,22 @@ export const getUserClusters = async (inputUsername: string): Promise<UserCluste
     const stats =
       statsMap.get(clusterId) ??
       {
-        likes: [],
+        likes: [] as number[],
         totalLikes: 0,
         count: 0,
-        timestamps: [],
+        timestamps: [] as number[],
         replies: new Map<string, number>(),
-        referenceTweets: new Map(),
+        referenceTweets: new Map<
+          string,
+          {
+            tweetId: string;
+            username: string;
+            accountId: string;
+            createdAt: string | null;
+            fullText: string;
+            favoriteCount: number;
+          }
+        >(),
       };
 
     const favorite = sanitizeNumber(row["favorite_count"]);
