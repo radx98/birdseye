@@ -180,17 +180,12 @@ export const ThreadsSection = () => {
                   key={thread.id}
                   className="flex flex-col gap-4 rounded-lg border border-zinc-200 bg-zinc-50 p-5 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60 flex-none w-[40%] max-w-[40%] snap-start"
                 >
-                  <div className="flex flex-col gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-                    <div className="flex items-center justify-between gap-2 text-[0.7rem] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                      <span>{threadClusterLabel ? `Cluster: ${threadClusterLabel}` : "Cluster view"}</span>
-                      <span>{`Max prob: ${formatProbability(thread.maxClusterProb)}`}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 text-zinc-500 dark:text-zinc-400">
-                      <span className="inline-flex items-center gap-1 font-medium text-zinc-700 dark:text-zinc-200">
-                        <span aria-hidden="true">❤️</span>
-                        <span>{formatNumber(thread.totalFavorites)}</span>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{threadClusterLabel}</span>
+                      <span className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                        {`Max prob: ${formatProbability(thread.maxClusterProb)}`}
                       </span>
-                      <span className="text-xs">{formatDate(thread.rootCreatedAt)}</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {thread.isIncomplete && (
@@ -222,7 +217,7 @@ export const ThreadsSection = () => {
                           {index > 0 ? (
                             <div className="border-t border-dashed border-zinc-200 dark:border-zinc-700" aria-hidden="true" />
                           ) : null}
-                          <article className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-left transition-colors dark:border-zinc-700 dark:bg-zinc-900">
+                          <article className="flex flex-col gap-3 text-left">
                             <div className="flex items-start gap-3">
                               <Image
                                 src={tweet.avatarUrl}

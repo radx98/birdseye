@@ -59,6 +59,20 @@ export type ExplorerContextValue = {
 
 const UserExplorerContext = createContext<ExplorerContextValue | null>(null);
 
+const getThreadTopFavoriteCount = (thread: ThreadEntry): number => {
+  if (!thread?.tweets?.length) {
+    return 0;
+  }
+  let max = 0;
+  for (const tweet of thread.tweets) {
+    const candidate = Number.isFinite(tweet.favoriteCount) ? tweet.favoriteCount : 0;
+    if (candidate > max) {
+      max = candidate;
+    }
+  }
+  return max;
+};
+
 type UserExplorerProviderProps = {
   users: string[];
   children: ReactNode;
@@ -460,7 +474,7 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
 
       let primary = 0;
       if (threadSortKey === "favorite-count") {
-        primary = compareNumbers(a.totalFavorites ?? 0, b.totalFavorites ?? 0);
+        primary = compareNumbers(getThreadTopFavoriteCount(a), getThreadTopFavoriteCount(b));
       } else if (threadSortKey === "date") {
         primary = compareNumbers(toDateValue(a.rootCreatedAt ?? null), toDateValue(b.rootCreatedAt ?? null));
       } else if (threadSortKey === "cluster-probability") {
