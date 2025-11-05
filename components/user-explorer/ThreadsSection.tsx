@@ -178,7 +178,7 @@ export const ThreadsSection = () => {
               return (
                 <article
                   key={thread.id}
-                  className="flex flex-col gap-4 rounded-lg border border-zinc-200 bg-zinc-50 p-5 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60 flex-none w-[40%] max-w-[40%] snap-start"
+                  className="flex flex-col gap-4 rounded-lg border border-zinc-200 bg-zinc-50/80 p-5 transition-colors dark:border-zinc-700 dark:bg-zinc-800/60 odd:bg-zinc-200/40 dark:odd:bg-zinc-700/60 flex-none w-[40%] min-w-[18rem] snap-start"
                 >
                   <div className="flex flex-col gap-3">
                     <div className="flex flex-col gap-1">
@@ -352,7 +352,7 @@ export const ThreadsSection = () => {
           <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
             Threads and Tweets
           </h2>
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-col items-start gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-4">
             <div className="flex items-center">
               <span className="mr-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">Hide Replies</span>
               <button
@@ -429,7 +429,7 @@ export const ThreadsSection = () => {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 justify-end">
+        <div className="flex flex-col items-stretch gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-end lg:gap-4">
           <div className="flex items-center">
             <label
               htmlFor={sortLabelId}

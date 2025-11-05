@@ -31,7 +31,7 @@ export const ClustersSection = () => {
 
   return (
     <section className="flex flex-col gap-6 rounded-lg bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">Clusters</h2>
         {clustersData && (
           <div className="flex items-center">
