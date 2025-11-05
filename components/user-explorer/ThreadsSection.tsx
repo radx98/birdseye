@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useMemo } from "react";
 import { useUserExplorer, type ThreadSortKey } from "./context";
 import { formatDate, formatHandle, formatNumber } from "./formatters";
+import { extractTrailingTcoLinks } from "./text";
 
 const SORT_OPTIONS: Array<{ value: ThreadSortKey; label: string }> = [
   { value: "favorite-count", label: "Favorite Count" },
@@ -141,41 +142,69 @@ export const ThreadsSection = () => {
                 </div>
               </div>
               <div className="flex flex-col gap-4">
-                {thread.tweets.map((tweet, index) => (
-                  <div key={tweet.id || `${thread.id}-${index}`} className="flex flex-col gap-3">
-                    {index > 0 && (
-                      <div className="border-t border-dashed border-zinc-200 dark:border-zinc-700" aria-hidden="true" />
-                    )}
-                    <div className="flex gap-3">
-                      <Image
-                        src={tweet.avatarUrl}
-                        alt={tweet.username ? `Avatar of ${formatHandle(tweet.username)}` : "Avatar placeholder"}
-                        width={40}
-                        height={40}
-                        className="h-10 w-10 rounded-full border border-zinc-200 object-cover dark:border-zinc-700"
-                      />
-                      <div className="flex flex-1 flex-col gap-2">
-                        <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <div className="flex flex-wrap items-baseline gap-2">
-                            <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-                              {formatHandle(tweet.username) || "Unknown"}
-                            </span>
-                            <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                              {formatDate(tweet.createdAt)}
+                {thread.tweets.map((tweet, index) => {
+                  const { body: tweetBody, trailingLinks } = extractTrailingTcoLinks(tweet.fullText);
+                  const hasTweetBody = Boolean(tweetBody && tweetBody.trim().length > 0);
+                  const shouldShowFallback = !hasTweetBody && trailingLinks.length === 0;
+
+                  return (
+                    <div key={tweet.id || `${thread.id}-${index}`} className="flex flex-col gap-3">
+                      {index > 0 && (
+                        <div className="border-t border-dashed border-zinc-200 dark:border-zinc-700" aria-hidden="true" />
+                      )}
+                      <div className="flex gap-3">
+                        <Image
+                          src={tweet.avatarUrl}
+                          alt={tweet.username ? `Avatar of ${formatHandle(tweet.username)}` : "Avatar placeholder"}
+                          width={40}
+                          height={40}
+                          className="h-10 w-10 rounded-full border border-zinc-200 object-cover dark:border-zinc-700"
+                        />
+                        <div className="flex flex-1 flex-col gap-2">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <div className="flex flex-wrap items-baseline gap-2">
+                              <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+                                {formatHandle(tweet.username) || "Unknown"}
+                              </span>
+                              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                {formatDate(tweet.createdAt)}
+                              </span>
+                            </div>
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-rose-600 dark:text-rose-300">
+                              <span aria-hidden="true">❤️</span>
+                              {formatNumber(tweet.favoriteCount)}
                             </span>
                           </div>
-                          <span className="inline-flex items-center gap-1 text-xs font-medium text-rose-600 dark:text-rose-300">
-                            <span aria-hidden="true">❤️</span>
-                            {formatNumber(tweet.favoriteCount)}
-                          </span>
+                          {hasTweetBody ? (
+                            <p className="text-sm leading-relaxed text-zinc-700 whitespace-pre-line dark:text-zinc-300">
+                              {tweetBody}
+                            </p>
+                          ) : shouldShowFallback ? (
+                            <p className="text-sm leading-relaxed text-zinc-700 whitespace-pre-line dark:text-zinc-300">
+                              Tweet content unavailable.
+                            </p>
+                          ) : null}
+                          {trailingLinks.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {trailingLinks.map((link) => (
+                                <a
+                                  key={link}
+                                  href={link}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-zinc-600 transition hover:text-zinc-800 dark:text-zinc-300 dark:hover:text-zinc-100"
+                                >
+                                  <span aria-hidden="true">📎</span>
+                                  Tweet (view)
+                                </a>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
-                        <p className="text-sm leading-relaxed text-zinc-700 whitespace-pre-line dark:text-zinc-300">
-                          {tweet.fullText || "Tweet content unavailable."}
-                        </p>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </article>
           );

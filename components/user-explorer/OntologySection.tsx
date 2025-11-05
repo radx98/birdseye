@@ -5,6 +5,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import type { ThreadEntry } from "@/types/thread";
 import { useUserExplorer } from "./context";
 import { formatDate, formatHandle, formatNumber } from "./formatters";
+import { extractTrailingTcoLinks } from "./text";
 
 export const OntologySection = () => {
   const {
@@ -251,6 +252,9 @@ export const OntologySection = () => {
                           const isThreadRoot =
                             data.isThreadRoot ?? (data.thread ? data.thread.tweets[0]?.id === referenceId : false);
                           const linkTarget = buildTweetUrl(referenceId, data.username);
+                          const { body: tweetBody, trailingLinks } = extractTrailingTcoLinks(data.fullText);
+                          const hasTweetBody = Boolean(tweetBody && tweetBody.trim().length > 0);
+                          const shouldShowFallback = !hasTweetBody && trailingLinks.length === 0;
 
                           return (
                             <article
@@ -284,9 +288,31 @@ export const OntologySection = () => {
                                       View
                                     </a>
                                   </div>
-                                  <p className="text-[0.75rem] leading-snug text-zinc-700 whitespace-pre-line dark:text-zinc-200">
-                                    {data.fullText || "Tweet content unavailable."}
-                                  </p>
+                                  {hasTweetBody ? (
+                                    <p className="text-[0.75rem] leading-snug text-zinc-700 whitespace-pre-line dark:text-zinc-200">
+                                      {tweetBody}
+                                    </p>
+                                  ) : shouldShowFallback ? (
+                                    <p className="text-[0.75rem] leading-snug text-zinc-700 whitespace-pre-line dark:text-zinc-200">
+                                      Tweet content unavailable.
+                                    </p>
+                                  ) : null}
+                                  {trailingLinks.length > 0 ? (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      {trailingLinks.map((link) => (
+                                        <a
+                                          key={link}
+                                          href={link}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-zinc-600 transition hover:text-zinc-800 dark:text-zinc-300 dark:hover:text-zinc-100"
+                                        >
+                                          <span aria-hidden="true">📎</span>
+                                          Tweet (view)
+                                        </a>
+                                      ))}
+                                    </div>
+                                  ) : null}
                                   <div className="flex flex-wrap items-center gap-2 text-[0.7rem] text-zinc-500 dark:text-zinc-400">
                                     <span className="inline-flex items-center gap-1 rounded-full bg-zinc-200/70 px-2 py-0.5 font-medium dark:bg-zinc-800/70">
                                       <span aria-hidden="true">❤️</span>
