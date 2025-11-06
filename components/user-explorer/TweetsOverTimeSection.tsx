@@ -66,7 +66,6 @@ export const TweetsOverTimeSection = () => {
     end: 0,
     range: 0,
   });
-  const DOUBLE_TAP_MS = 300;
 
   const formatTooltipMonth = useMemo(() => timeFormat("%B"), []);
   const formatTooltipYear = useMemo(() => timeFormat("%Y"), []);

@@ -492,6 +492,14 @@ const loadTweetRows = async (username: string): Promise<NormalizedTweetRow[]> =>
   }
 };
 
+type SharedTweetRowsOptions = {
+  tweetRows?: NormalizedTweetRow[] | null;
+};
+
+type SummaryComputationOptions = SharedTweetRowsOptions & {
+  skipExistenceCheck?: boolean;
+};
+
 const sanitizeBoolean = (value: unknown): boolean => {
   if (typeof value === "boolean") {
     return value;
@@ -833,20 +841,25 @@ export const listUsers = async (): Promise<string[]> => {
   return Array.from(users).sort((a, b) => a.localeCompare(b));
 };
 
-export const getUserSummary = async (inputUsername: string): Promise<UserSummary | null> => {
+export const getUserSummary = async (
+  inputUsername: string,
+  options?: SummaryComputationOptions,
+): Promise<UserSummary | null> => {
   const username = normalizeUsername(inputUsername);
   if (!username) {
     return null;
   }
 
-  const exists = await ensureUserExists(username);
-  if (!exists) {
-    return null;
+  if (!options?.skipExistenceCheck) {
+    const exists = await ensureUserExists(username);
+    if (!exists) {
+      return null;
+    }
   }
 
   const groupData = await readJsonFile<Record<string, unknown>>(username, "group_results.json");
   const params = await readJsonFile<Record<string, unknown>>(username, "clustering_params.json");
-  const tweetRows = await loadTweetRows(username);
+  const tweetRows = options?.tweetRows ?? (await loadTweetRows(username));
 
   let description = "";
   if (groupData && typeof groupData === "object") {
@@ -973,7 +986,10 @@ export const getUserSummary = async (inputUsername: string): Promise<UserSummary
   };
 };
 
-export const getUserClusters = async (inputUsername: string): Promise<UserClusters | null> => {
+export const getUserClusters = async (
+  inputUsername: string,
+  options?: SharedTweetRowsOptions,
+): Promise<UserClusters | null> => {
   const username = normalizeUsername(inputUsername);
   if (!username) {
     return null;
@@ -1085,7 +1101,7 @@ export const getUserClusters = async (inputUsername: string): Promise<UserCluste
     }
   }
 
-  const tweetRows = await loadTweetRows(username);
+  const tweetRows = options?.tweetRows ?? (await loadTweetRows(username));
 
   const statsMap = new Map<
     string,
@@ -1362,13 +1378,16 @@ const pickLongestPath = (
   return best.length ? best : fallback;
 };
 
-export const getUserThreads = async (inputUsername: string): Promise<UserThreads | null> => {
+export const getUserThreads = async (
+  inputUsername: string,
+  options?: SharedTweetRowsOptions,
+): Promise<UserThreads | null> => {
   const username = normalizeUsername(inputUsername);
   if (!username) {
     return null;
   }
 
-  const tweetRows = await loadTweetRows(username);
+  const tweetRows = options?.tweetRows ?? (await loadTweetRows(username));
   if (!tweetRows.length) {
     return { threads: [] };
   }
@@ -1606,4 +1625,38 @@ export const getUserThreads = async (inputUsername: string): Promise<UserThreads
   });
 
   return { threads };
+};
+
+export type UserDataBundle = {
+  summary: UserSummary | null;
+  clusters: UserClusters | null;
+  threads: UserThreads | null;
+};
+
+export const getUserDataBundle = async (
+  inputUsername: string,
+): Promise<UserDataBundle | null> => {
+  const username = normalizeUsername(inputUsername);
+  if (!username) {
+    return null;
+  }
+
+  const exists = await ensureUserExists(username);
+  if (!exists) {
+    return null;
+  }
+
+  const tweetRows = await loadTweetRows(username);
+
+  const [summary, clusters, threads] = await Promise.all([
+    getUserSummary(username, { tweetRows, skipExistenceCheck: true }),
+    getUserClusters(username, { tweetRows }),
+    getUserThreads(username, { tweetRows }),
+  ]);
+
+  return {
+    summary,
+    clusters,
+    threads,
+  };
 };

@@ -79,7 +79,9 @@ export const ThreadsSection = () => {
       return;
     }
 
-    updateScrollShadows();
+    const frame = requestAnimationFrame(() => {
+      updateScrollShadows();
+    });
 
     const handleScroll = () => {
       updateScrollShadows();
@@ -89,6 +91,7 @@ export const ThreadsSection = () => {
     window.addEventListener("resize", handleScroll);
 
     return () => {
+      cancelAnimationFrame(frame);
       element.removeEventListener("scroll", handleScroll);
       window.removeEventListener("resize", handleScroll);
     };
