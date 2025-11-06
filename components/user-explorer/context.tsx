@@ -19,6 +19,7 @@ type ClusterCache = Map<string, UserClusters>;
 type ThreadCache = Map<string, UserThreads>;
 
 export type ThreadSortKey = "favorite-count" | "date" | "cluster-probability";
+export type TimelineRange = { start: string; end: string };
 
 export type ExplorerContextValue = {
   selectOptions: Array<{ value: string; label: string }>;
@@ -55,6 +56,8 @@ export type ExplorerContextValue = {
   visibleThreads: ThreadEntry[];
   hasThreadData: boolean;
   hasVisibleThreads: boolean;
+  timelineRange: TimelineRange | null;
+  setTimelineRange: (range: TimelineRange | null) => void;
 };
 
 const UserExplorerContext = createContext<ExplorerContextValue | null>(null);
@@ -99,6 +102,7 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
   const [hideIncompleteThreads, setHideIncompleteThreads] = useState(false);
   const [threadSortKey, setThreadSortKeyState] = useState<ThreadSortKey>("favorite-count");
   const [threadSortAscending, setThreadSortAscendingState] = useState(false);
+  const [timelineRange, setTimelineRangeState] = useState<TimelineRange | null>(null);
 
   const summaryCacheRef = useRef<SummaryCache>(new Map());
   const clusterCacheRef = useRef<ClusterCache>(new Map());
@@ -178,6 +182,7 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     setHideIncompleteThreads(false);
     setThreadSortKeyState("favorite-count");
     setThreadSortAscendingState(false);
+    setTimelineRangeState(null);
   }, [selectedUser]);
 
   useEffect(() => {
@@ -225,6 +230,7 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     setHideIncompleteThreads(false);
     setThreadSortKeyState("favorite-count");
     setThreadSortAscendingState(false);
+    setTimelineRangeState(null);
   }, []);
 
   const loadUserData = useCallback(
@@ -413,6 +419,41 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     setThreadSortAscendingState(value);
   }, []);
 
+  const setTimelineRange = useCallback((range: TimelineRange | null) => {
+    setTimelineRangeState(range);
+  }, []);
+
+  const monthBounds = useMemo(() => {
+    if (!timelineRange) {
+      return null;
+    }
+
+    const getMonthStart = (value: string) => {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return null;
+      }
+      return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
+    };
+
+    const start = getMonthStart(timelineRange.start);
+    const end = getMonthStart(timelineRange.end);
+    if (start === null || end === null) {
+      return null;
+    }
+
+    const lower = Math.min(start, end);
+    const upper = Math.max(start, end);
+
+    const upperDate = new Date(upper);
+    const upperExclusive = Date.UTC(upperDate.getUTCFullYear(), upperDate.getUTCMonth() + 1, 1);
+
+    return {
+      start: lower,
+      endExclusive: upperExclusive,
+    };
+  }, [timelineRange]);
+
   const filteredClusters: ClusterInfo[] = useMemo(() => {
     if (!clustersData) {
       return [];
@@ -458,7 +499,63 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
       return true;
     });
 
-    if (!applyFilters.length) {
+    const applyTimelineFilter = (threads: ThreadEntry[]): ThreadEntry[] => {
+      if (!monthBounds) {
+        return threads;
+      }
+
+      const filteredThreads: ThreadEntry[] = [];
+      for (const thread of threads) {
+        const tweetsInRange = thread.tweets.filter((tweet) => {
+          if (!tweet.createdAt) {
+            return false;
+          }
+          const timestamp = Date.parse(tweet.createdAt);
+          if (Number.isNaN(timestamp)) {
+            return false;
+          }
+          return timestamp >= monthBounds.start && timestamp < monthBounds.endExclusive;
+        });
+
+        if (!tweetsInRange.length) {
+          continue;
+        }
+
+        let totalFavorites = 0;
+        let maxClusterProb = 0;
+        let containsRetweet = false;
+
+        for (const tweet of tweetsInRange) {
+          if (Number.isFinite(tweet.favoriteCount)) {
+            totalFavorites += tweet.favoriteCount;
+          }
+          if (Number.isFinite(tweet.clusterProb) && tweet.clusterProb > maxClusterProb) {
+            maxClusterProb = tweet.clusterProb;
+          }
+          if (tweet.isRetweet) {
+            containsRetweet = true;
+          }
+        }
+
+        const firstTweet = tweetsInRange[0] ?? null;
+
+        filteredThreads.push({
+          ...thread,
+          tweets: tweetsInRange,
+          totalFavorites,
+          maxClusterProb,
+          containsRetweet,
+          rootCreatedAt: firstTweet?.createdAt ?? thread.rootCreatedAt,
+          rootIsReply: firstTweet?.isReply ?? thread.rootIsReply,
+        });
+      }
+
+      return filteredThreads;
+    };
+
+    const filteredByTimeline = applyTimelineFilter(applyFilters);
+
+    if (!filteredByTimeline.length) {
       return [] as ThreadEntry[];
     }
 
@@ -468,7 +565,7 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
       return Number.isNaN(timestamp) ? 0 : timestamp;
     };
 
-    const sorted = [...applyFilters].sort((a, b) => {
+    const sorted = [...filteredByTimeline].sort((a, b) => {
       const compareNumbers = (left: number, right: number) =>
         threadSortAscending ? left - right : right - left;
 
@@ -497,6 +594,7 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     hideRetweets,
     threadSortKey,
     threadSortAscending,
+    monthBounds,
   ]);
 
   const hasThreadData = Boolean(threadsData?.threads?.length);
@@ -537,6 +635,8 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     visibleThreads,
     hasThreadData,
     hasVisibleThreads,
+    timelineRange,
+    setTimelineRange,
   };
 
   return <UserExplorerContext.Provider value={contextValue}>{children}</UserExplorerContext.Provider>;

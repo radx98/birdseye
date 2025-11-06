@@ -22,7 +22,7 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-zinc-100 py-12 text-zinc-900 transition-colors dark:bg-zinc-950 dark:text-zinc-100">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-14 px-6 sm:px-10 lg:px-16">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-14 px-3 sm:px-16">
         <div className="flex justify-end">
           <ThemeSwitch />
         </div>
@@ -58,7 +58,7 @@ export default async function Home() {
           </div>
         </header>
 
-        <section className="rounded-lg bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
+        <section className="rounded-lg bg-white p-4 sm:p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
           <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
             Key features
           </h2>
@@ -105,7 +105,7 @@ export default async function Home() {
 
         <UserExplorerProvider users={users}>
           <>
-            <section className="flex flex-col gap-6 rounded-lg bg-white p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
+            <section className="flex flex-col gap-6 rounded-lg bg-white p-4 sm:p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
               <div>
                 <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
                   Select a User
@@ -120,8 +120,8 @@ export default async function Home() {
 
             <ClustersSection />
             <YearlySummariesSection />
-            <TweetsOverTimeSection />
             <OntologySection />
+            <TweetsOverTimeSection />
             <ThreadsSection />
           </>
         </UserExplorerProvider>
