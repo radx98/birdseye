@@ -409,6 +409,22 @@ const sanitizeStringArray = (value: unknown, limit = 0): string[] => {
   return results;
 };
 
+const toDate = (value: unknown): Date | null => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+  const text = sanitizeString(value);
+  if (!text) {
+    return null;
+  }
+  const parsed = Date.parse(text);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  const date = new Date(parsed);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
 const medianNumber = (values: number[]): number => {
   if (!values.length) {
     return 0;
@@ -643,6 +659,7 @@ export const getUserSummary = async (inputUsername: string): Promise<UserSummary
     "account_id",
     "favorite_count",
     "reply_to_user_id",
+    "created_at",
   ]);
 
   let description = "";
@@ -726,6 +743,38 @@ export const getUserSummary = async (inputUsername: string): Promise<UserSummary
     }
   }
 
+  const monthlyTimeline = new Map<string, { count: number; monthStart: number }>();
+
+  if (primaryAccount) {
+    for (const row of tweetsRows) {
+      const accountId = sanitizeString(row["account_id"]);
+      if (accountId !== primaryAccount) {
+        continue;
+      }
+      const createdAtDate = toDate(row["created_at"]);
+      if (!createdAtDate) {
+        continue;
+      }
+      const year = createdAtDate.getUTCFullYear();
+      const month = createdAtDate.getUTCMonth();
+      const monthStart = Date.UTC(year, month, 1);
+      const bucketKey = `${year}-${month}`;
+      const existing = monthlyTimeline.get(bucketKey);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        monthlyTimeline.set(bucketKey, { count: 1, monthStart });
+      }
+    }
+  }
+
+  const tweetsOverTime = Array.from(monthlyTimeline.values())
+    .sort((a, b) => a.monthStart - b.monthStart)
+    .map(({ monthStart, count }) => ({
+      month: new Date(monthStart).toISOString(),
+      count,
+    }));
+
   return {
     username,
     handle,
@@ -736,6 +785,7 @@ export const getUserSummary = async (inputUsername: string): Promise<UserSummary
     following: followingIds.size,
     likes,
     avatarUrl,
+    tweetsOverTime,
   };
 };
 
