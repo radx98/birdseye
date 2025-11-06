@@ -34,6 +34,8 @@ const buildSupabaseUrl = (path: string) => {
 const ACCOUNT_ID_ALIAS = "alias_account_id";
 const AVATAR_ALIAS = "alias_avatar";
 
+const PROFILE_CACHE = new Map<string, string | null>();
+
 type NormalizedProfileRecord = {
   accountId: string;
   avatarUrl: string | null;
@@ -153,8 +155,20 @@ export const fetchAvatarsByAccountId = async (
   const CHUNK_SIZE = 50;
   const results = new Map<string, string | null>();
 
-  for (let start = 0; start < unique.length; start += CHUNK_SIZE) {
-    const slice = unique.slice(start, start + CHUNK_SIZE);
+  for (const key of unique) {
+    if (PROFILE_CACHE.has(key)) {
+      results.set(key, PROFILE_CACHE.get(key) ?? null);
+    }
+  }
+
+  const missing = unique.filter((key) => !PROFILE_CACHE.has(key));
+
+  for (let start = 0; start < missing.length; start += CHUNK_SIZE) {
+    const slice = missing.slice(start, start + CHUNK_SIZE);
+    if (!slice.length) {
+      continue;
+    }
+
     const sliceKeys = new Set(slice);
     const { success, records } = await fetchProfileChunk(slice);
 
@@ -164,25 +178,33 @@ export const fetchAvatarsByAccountId = async (
         if (!key.length) {
           continue;
         }
-        if (record.avatarUrl && record.avatarUrl.length) {
-          results.set(key, record.avatarUrl);
-        } else if (!results.has(key)) {
-          results.set(key, null);
-        }
+        const avatarValue = record.avatarUrl && record.avatarUrl.length ? record.avatarUrl : null;
+        PROFILE_CACHE.set(key, avatarValue);
+        results.set(key, avatarValue);
         sliceKeys.delete(key);
       }
-    }
 
-    for (const key of sliceKeys) {
-      if (!results.has(key)) {
-        results.set(key, null);
+      for (const key of sliceKeys) {
+        PROFILE_CACHE.set(key, null);
+        if (!results.has(key)) {
+          results.set(key, null);
+        }
+      }
+    } else {
+      for (const key of sliceKeys) {
+        if (!results.has(key)) {
+          results.set(key, null);
+        }
       }
     }
   }
 
   for (const key of unique) {
     if (!results.has(key)) {
-      results.set(key, null);
+      results.set(key, PROFILE_CACHE.get(key) ?? null);
+    }
+    if (!PROFILE_CACHE.has(key)) {
+      PROFILE_CACHE.set(key, results.get(key) ?? null);
     }
   }
 

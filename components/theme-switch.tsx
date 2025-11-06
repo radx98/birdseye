@@ -58,9 +58,8 @@ const resolveInitialMode = (): ThemeMode => {
 };
 
 const ThemeSwitch = () => {
-  const [mode, setMode] = useState<ThemeMode>("system");
-  const modeRef = useRef<ThemeMode>("system");
-  const hasHydratedRef = useRef(false);
+  const [mode, setMode] = useState<ThemeMode>(() => resolveInitialMode());
+  const modeRef = useRef<ThemeMode>(mode);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -79,31 +78,14 @@ const ThemeSwitch = () => {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    if (!hasHydratedRef.current) return;
-
     modeRef.current = mode;
+    applyTheme(mode);
     try {
       localStorage.setItem(STORAGE_KEY, mode);
     } catch {
       // ignore write errors (e.g. private mode)
     }
-    applyTheme(mode);
   }, [mode]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const storedMode = resolveInitialMode();
-    modeRef.current = storedMode;
-    setMode(storedMode);
-    applyTheme(storedMode);
-    try {
-      localStorage.setItem(STORAGE_KEY, storedMode);
-    } catch {
-      // ignore write errors (e.g. private mode)
-    }
-    hasHydratedRef.current = true;
-  }, []);
 
   const renderButton = (value: ThemeMode, label: string) => {
     const isActive = mode === value;

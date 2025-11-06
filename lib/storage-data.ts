@@ -377,6 +377,129 @@ const sanitizeNumber = (value: unknown): number => {
   return 0;
 };
 
+type NormalizedTweetRow = {
+  tweetId: string;
+  accountId: string;
+  clusterId: string;
+  clusterProb: number;
+  favoriteCount: number;
+  replyToUserId: string;
+  replyToUsername: string;
+  replyToTweetId: string;
+  username: string;
+  fullText: string;
+  createdAt: string | null;
+  createdAtMs: number | null;
+};
+
+const TWEET_ROW_COLUMNS = [
+  "tweet_id",
+  "account_id",
+  "cluster",
+  "cluster_prob",
+  "favorite_count",
+  "reply_to_user_id",
+  "reply_to_username",
+  "reply_to_tweet_id",
+  "username",
+  "created_at",
+  "full_text",
+];
+
+const tweetRowsCache = new Map<string, Promise<NormalizedTweetRow[]>>();
+
+const loadTweetRows = async (username: string): Promise<NormalizedTweetRow[]> => {
+  const normalizedUsername = normalizeUsername(username);
+  if (!normalizedUsername) {
+    return [];
+  }
+
+  const cached = tweetRowsCache.get(normalizedUsername);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = (async () => {
+    const rows = await readParquetRecords(normalizedUsername, "clustered_tweets_df.parquet", TWEET_ROW_COLUMNS);
+    if (!rows.length) {
+      return [] as NormalizedTweetRow[];
+    }
+
+    const normalizedRows: NormalizedTweetRow[] = [];
+
+    for (const row of rows) {
+      const tweetId = sanitizeString(row["tweet_id"]);
+      const accountId = sanitizeString(row["account_id"]);
+      const clusterId = sanitizeString(row["cluster"]);
+      const clusterProb = sanitizeNumber(row["cluster_prob"]);
+      const favoriteCount = Math.round(sanitizeNumber(row["favorite_count"]));
+      const replyToUserId = sanitizeString(row["reply_to_user_id"]);
+      const replyToUsername = sanitizeString(row["reply_to_username"]);
+      const replyToTweetId = sanitizeString(row["reply_to_tweet_id"]);
+      const usernameValue = sanitizeString(row["username"]);
+      const fullText = sanitizeString(row["full_text"]);
+
+      const rawCreatedAt = row["created_at"];
+      let createdAt: string | null = null;
+      let createdAtMs: number | null = null;
+
+      if (rawCreatedAt instanceof Date && !Number.isNaN(rawCreatedAt.getTime())) {
+        createdAtMs = rawCreatedAt.getTime();
+        createdAt = rawCreatedAt.toISOString();
+      } else {
+        const createdAtText = sanitizeString(rawCreatedAt);
+        if (createdAtText) {
+          const parsed = Date.parse(createdAtText);
+          if (Number.isFinite(parsed)) {
+            createdAtMs = parsed;
+            createdAt = new Date(parsed).toISOString();
+          } else {
+            createdAt = createdAtText;
+          }
+        }
+      }
+
+      normalizedRows.push({
+        tweetId,
+        accountId,
+        clusterId,
+        clusterProb,
+        favoriteCount,
+        replyToUserId,
+        replyToUsername,
+        replyToTweetId,
+        username: usernameValue,
+        fullText,
+        createdAt,
+        createdAtMs,
+      });
+    }
+
+    return normalizedRows;
+  })();
+
+  tweetRowsCache.set(normalizedUsername, promise);
+
+  try {
+    const result = await promise;
+    if (!result.length) {
+      tweetRowsCache.delete(normalizedUsername);
+    }
+    return result;
+  } catch (error) {
+    tweetRowsCache.delete(normalizedUsername);
+    throw error;
+  }
+};
+
+type SharedTweetRowsOptions = {
+  tweetRows?: NormalizedTweetRow[] | null;
+};
+
+type SummaryComputationOptions = SharedTweetRowsOptions & {
+  skipExistenceCheck?: boolean;
+};
+
 const sanitizeBoolean = (value: unknown): boolean => {
   if (typeof value === "boolean") {
     return value;
@@ -407,22 +530,6 @@ const sanitizeStringArray = (value: unknown, limit = 0): string[] => {
     }
   }
   return results;
-};
-
-const toDate = (value: unknown): Date | null => {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value;
-  }
-  const text = sanitizeString(value);
-  if (!text) {
-    return null;
-  }
-  const parsed = Date.parse(text);
-  if (!Number.isFinite(parsed)) {
-    return null;
-  }
-  const date = new Date(parsed);
-  return Number.isNaN(date.getTime()) ? null : date;
 };
 
 const toUtcMonthIso = (year: number, monthIndex: number): string => {
@@ -660,26 +767,47 @@ const normalizeYearlySummaries = (value: unknown): { period: string; summary: st
   return bucket;
 };
 
-const ensureUserExists = async (username: string): Promise<boolean> => {
-  const sentinels = [
-    "labeled_cluster_hierarchy.parquet",
-    "clustered_tweets_df.parquet",
-    "cluster_ontology_items.json",
-  ];
+const userExistenceCache = new Map<string, Promise<boolean>>();
 
-  for (const sentinel of sentinels) {
-    const key = `${username}/${sentinel}`;
-    const buffer = await fetchObjectBuffer(key);
-    if (buffer) {
-      const bucket = await getBucketName();
-      const cacheKey = `${bucket}:${key}`;
-      objectCache.delete(cacheKey);
-      objectCache.set(cacheKey, Promise.resolve(buffer));
-      return true;
-    }
+const ensureUserExists = async (username: string): Promise<boolean> => {
+  const normalized = normalizeUsername(username);
+  if (!normalized) {
+    return false;
   }
 
-  return false;
+  const cached = userExistenceCache.get(normalized);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = (async () => {
+    const bucket = await getBucketName();
+    const response = await s3Client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: `${normalized}/`,
+        MaxKeys: 1,
+      }),
+    );
+
+    const keyCount = response.KeyCount ?? 0;
+    const hasContents = (response.Contents?.length ?? 0) > 0;
+    const hasPrefixes = (response.CommonPrefixes?.length ?? 0) > 0;
+    return keyCount > 0 || hasContents || hasPrefixes;
+  })();
+
+  userExistenceCache.set(normalized, promise);
+
+  try {
+    const exists = await promise;
+    if (!exists) {
+      userExistenceCache.delete(normalized);
+    }
+    return exists;
+  } catch (error) {
+    userExistenceCache.delete(normalized);
+    throw error;
+  }
 };
 
 export const listUsers = async (): Promise<string[]> => {
@@ -713,25 +841,25 @@ export const listUsers = async (): Promise<string[]> => {
   return Array.from(users).sort((a, b) => a.localeCompare(b));
 };
 
-export const getUserSummary = async (inputUsername: string): Promise<UserSummary | null> => {
+export const getUserSummary = async (
+  inputUsername: string,
+  options?: SummaryComputationOptions,
+): Promise<UserSummary | null> => {
   const username = normalizeUsername(inputUsername);
   if (!username) {
     return null;
   }
 
-  const exists = await ensureUserExists(username);
-  if (!exists) {
-    return null;
+  if (!options?.skipExistenceCheck) {
+    const exists = await ensureUserExists(username);
+    if (!exists) {
+      return null;
+    }
   }
 
   const groupData = await readJsonFile<Record<string, unknown>>(username, "group_results.json");
   const params = await readJsonFile<Record<string, unknown>>(username, "clustering_params.json");
-  const tweetsRows = await readParquetRecords(username, "clustered_tweets_df.parquet", [
-    "account_id",
-    "favorite_count",
-    "reply_to_user_id",
-    "created_at",
-  ]);
+  const tweetRows = options?.tweetRows ?? (await loadTweetRows(username));
 
   let description = "";
   if (groupData && typeof groupData === "object") {
@@ -750,10 +878,9 @@ export const getUserSummary = async (inputUsername: string): Promise<UserSummary
   let likes = 0;
   let tweets = 0;
 
-  for (const row of tweetsRows) {
-    const accountId = sanitizeString(row["account_id"]);
-    if (accountId) {
-      accountCounts.set(accountId, (accountCounts.get(accountId) ?? 0) + 1);
+  for (const row of tweetRows) {
+    if (row.accountId) {
+      accountCounts.set(row.accountId, (accountCounts.get(row.accountId) ?? 0) + 1);
     }
   }
 
@@ -765,19 +892,17 @@ export const getUserSummary = async (inputUsername: string): Promise<UserSummary
   }
 
   if (primaryAccount) {
-    for (const row of tweetsRows) {
-      const accountId = sanitizeString(row["account_id"]);
-      const replyTo = sanitizeString(row["reply_to_user_id"]);
-      const favoriteCount = sanitizeNumber(row["favorite_count"]);
+    for (const row of tweetRows) {
+      const favoriteCount = Number.isFinite(row.favoriteCount) ? row.favoriteCount : 0;
 
-      if (accountId === primaryAccount) {
+      if (row.accountId === primaryAccount) {
         tweets += 1;
         likes += favoriteCount;
-        if (replyTo && replyTo !== primaryAccount) {
-          followingIds.add(replyTo);
+        if (row.replyToUserId && row.replyToUserId !== primaryAccount) {
+          followingIds.add(row.replyToUserId);
         }
-      } else if (replyTo === primaryAccount && accountId) {
-        followerIds.add(accountId);
+      } else if (row.replyToUserId === primaryAccount && row.accountId) {
+        followerIds.add(row.accountId);
       }
     }
   }
@@ -817,17 +942,18 @@ export const getUserSummary = async (inputUsername: string): Promise<UserSummary
   const monthlyTimeline = new Map<string, { count: number; monthStart: number }>();
 
   if (primaryAccount) {
-    for (const row of tweetsRows) {
-      const accountId = sanitizeString(row["account_id"]);
-      if (accountId !== primaryAccount) {
+    for (const row of tweetRows) {
+      if (row.accountId !== primaryAccount || row.createdAtMs === null) {
         continue;
       }
-      const createdAtDate = toDate(row["created_at"]);
-      if (!createdAtDate) {
+
+      const date = new Date(row.createdAtMs);
+      if (Number.isNaN(date.getTime())) {
         continue;
       }
-      const year = createdAtDate.getUTCFullYear();
-      const month = createdAtDate.getUTCMonth();
+
+      const year = date.getUTCFullYear();
+      const month = date.getUTCMonth();
       const monthStart = Date.UTC(year, month, 1);
       const bucketKey = `${year}-${month}`;
       const existing = monthlyTimeline.get(bucketKey);
@@ -860,7 +986,10 @@ export const getUserSummary = async (inputUsername: string): Promise<UserSummary
   };
 };
 
-export const getUserClusters = async (inputUsername: string): Promise<UserClusters | null> => {
+export const getUserClusters = async (
+  inputUsername: string,
+  options?: SharedTweetRowsOptions,
+): Promise<UserClusters | null> => {
   const username = normalizeUsername(inputUsername);
   if (!username) {
     return null;
@@ -972,16 +1101,7 @@ export const getUserClusters = async (inputUsername: string): Promise<UserCluste
     }
   }
 
-  const tweetRows = await readParquetRecords(username, "clustered_tweets_df.parquet", [
-    "tweet_id",
-    "cluster",
-    "favorite_count",
-    "created_at",
-    "reply_to_username",
-    "username",
-    "full_text",
-    "account_id",
-  ]);
+  const tweetRows = options?.tweetRows ?? (await loadTweetRows(username));
 
   const statsMap = new Map<
     string,
@@ -1006,10 +1126,11 @@ export const getUserClusters = async (inputUsername: string): Promise<UserCluste
   >();
 
   for (const row of tweetRows) {
-    const clusterId = sanitizeString(row["cluster"]);
+    const clusterId = row.clusterId;
     if (!clusterId || !clusterIds.has(clusterId)) {
       continue;
     }
+
     const stats =
       statsMap.get(clusterId) ??
       {
@@ -1031,48 +1152,26 @@ export const getUserClusters = async (inputUsername: string): Promise<UserCluste
         >(),
       };
 
-    const favorite = sanitizeNumber(row["favorite_count"]);
+    const favorite = Number.isFinite(row.favoriteCount) ? row.favoriteCount : 0;
     stats.likes.push(favorite);
     stats.totalLikes += favorite;
     stats.count += 1;
 
-    const createdAtRaw = row["created_at"];
-    if (createdAtRaw instanceof Date) {
-      stats.timestamps.push(createdAtRaw.getTime());
-    } else {
-      const createdAtText = sanitizeString(createdAtRaw);
-      if (createdAtText) {
-        const parsed = Date.parse(createdAtText);
-        if (Number.isFinite(parsed)) {
-          stats.timestamps.push(parsed);
-        }
-      }
+    if (row.createdAtMs !== null && Number.isFinite(row.createdAtMs)) {
+      stats.timestamps.push(row.createdAtMs);
     }
 
-    const replyTo = sanitizeString(row["reply_to_username"]);
-    if (replyTo) {
-      stats.replies.set(replyTo, (stats.replies.get(replyTo) ?? 0) + 1);
+    if (row.replyToUsername) {
+      stats.replies.set(row.replyToUsername, (stats.replies.get(row.replyToUsername) ?? 0) + 1);
     }
 
-    const tweetId = sanitizeString(row["tweet_id"]);
-    if (tweetId) {
-      const usernameValue = sanitizeString(row["username"]);
-      const fullText = sanitizeString(row["full_text"]);
-      const accountId = sanitizeString(row["account_id"]);
-      let createdAt: string | null = null;
-      const tweetCreatedAtRaw = row["created_at"];
-      if (tweetCreatedAtRaw instanceof Date) {
-        createdAt = tweetCreatedAtRaw.toISOString();
-      } else {
-        const createdAtText = sanitizeString(tweetCreatedAtRaw);
-        createdAt = createdAtText || null;
-      }
-      stats.referenceTweets.set(tweetId, {
-        tweetId,
-        username: usernameValue,
-        accountId,
-        createdAt,
-        fullText,
+    if (row.tweetId) {
+      stats.referenceTweets.set(row.tweetId, {
+        tweetId: row.tweetId,
+        username: row.username,
+        accountId: row.accountId,
+        createdAt: row.createdAt,
+        fullText: row.fullText,
         favoriteCount: Math.round(favorite),
       });
     }
@@ -1279,23 +1378,16 @@ const pickLongestPath = (
   return best.length ? best : fallback;
 };
 
-export const getUserThreads = async (inputUsername: string): Promise<UserThreads | null> => {
+export const getUserThreads = async (
+  inputUsername: string,
+  options?: SharedTweetRowsOptions,
+): Promise<UserThreads | null> => {
   const username = normalizeUsername(inputUsername);
   if (!username) {
     return null;
   }
 
-  const tweetRows = await readParquetRecords(username, "clustered_tweets_df.parquet", [
-    "account_id",
-    "tweet_id",
-    "cluster",
-    "cluster_prob",
-    "username",
-    "created_at",
-    "full_text",
-    "favorite_count",
-    "reply_to_tweet_id",
-  ]);
+  const tweetRows = options?.tweetRows ?? (await loadTweetRows(username));
   if (!tweetRows.length) {
     return { threads: [] };
   }
@@ -1317,32 +1409,24 @@ export const getUserThreads = async (inputUsername: string): Promise<UserThreads
   >();
 
   for (const row of tweetRows) {
-    const tweetId = sanitizeString(row["tweet_id"]);
+    const tweetId = row.tweetId;
     if (!tweetId) {
       continue;
     }
-    const accountId = sanitizeString(row["account_id"]);
+    const accountId = row.accountId;
     if (accountId) {
       threadAccountIds.add(accountId);
-    }
-    const createdAtRaw = row["created_at"];
-    let createdAt: string | null = null;
-    if (createdAtRaw instanceof Date && !Number.isNaN(createdAtRaw.getTime())) {
-      createdAt = createdAtRaw.toISOString();
-    } else {
-      const parsed = sanitizeString(createdAtRaw);
-      createdAt = parsed || null;
     }
 
     tweetLookup.set(tweetId, {
       accountId: accountId || null,
-      cluster: sanitizeString(row["cluster"]),
-      clusterProb: sanitizeNumber(row["cluster_prob"]),
-      username: sanitizeString(row["username"]),
-      createdAt,
-      fullText: sanitizeString(row["full_text"]),
-      favoriteCount: Math.round(sanitizeNumber(row["favorite_count"])),
-      replyToTweetId: sanitizeString(row["reply_to_tweet_id"]),
+      cluster: row.clusterId,
+      clusterProb: Number.isFinite(row.clusterProb) ? row.clusterProb : 0,
+      username: row.username,
+      createdAt: row.createdAt,
+      fullText: row.fullText,
+      favoriteCount: Math.round(Number.isFinite(row.favoriteCount) ? row.favoriteCount : 0),
+      replyToTweetId: row.replyToTweetId,
     });
   }
 
@@ -1541,4 +1625,38 @@ export const getUserThreads = async (inputUsername: string): Promise<UserThreads
   });
 
   return { threads };
+};
+
+export type UserDataBundle = {
+  summary: UserSummary | null;
+  clusters: UserClusters | null;
+  threads: UserThreads | null;
+};
+
+export const getUserDataBundle = async (
+  inputUsername: string,
+): Promise<UserDataBundle | null> => {
+  const username = normalizeUsername(inputUsername);
+  if (!username) {
+    return null;
+  }
+
+  const exists = await ensureUserExists(username);
+  if (!exists) {
+    return null;
+  }
+
+  const tweetRows = await loadTweetRows(username);
+
+  const [summary, clusters, threads] = await Promise.all([
+    getUserSummary(username, { tweetRows, skipExistenceCheck: true }),
+    getUserClusters(username, { tweetRows }),
+    getUserThreads(username, { tweetRows }),
+  ]);
+
+  return {
+    summary,
+    clusters,
+    threads,
+  };
 };

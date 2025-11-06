@@ -22,12 +22,23 @@ export const OntologySection = () => {
   const closingTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
-    setReferenceOpenMap({});
-    setClosingReferenceMap({});
     Object.values(closingTimers.current).forEach((timer) => {
       clearTimeout(timer);
     });
     closingTimers.current = {};
+
+    if (typeof window === "undefined") {
+      return () => undefined;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      setReferenceOpenMap({});
+      setClosingReferenceMap({});
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
   }, [selectedCluster?.id]);
 
   useEffect(() => {
@@ -160,8 +171,9 @@ export const OntologySection = () => {
                       if (!prev[toggleKey]) {
                         return prev;
                       }
-                      const { [toggleKey]: _omit, ...rest } = prev;
-                      return rest;
+                      const next = { ...prev };
+                      delete next[toggleKey];
+                      return next;
                     });
                     delete closingTimers.current[toggleKey];
                   }, 200);
@@ -174,8 +186,9 @@ export const OntologySection = () => {
                     if (!prev[toggleKey]) {
                       return prev;
                     }
-                    const { [toggleKey]: _omit, ...rest } = prev;
-                    return rest;
+                    const next = { ...prev };
+                    delete next[toggleKey];
+                    return next;
                   });
                   setReferenceOpenMap((prev) => ({
                     ...prev,
