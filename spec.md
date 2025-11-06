@@ -70,12 +70,6 @@ Three blocks in a row that show information on the cluster selected in the table
 - Year selector (tabs)
 - Summary of the selected year
 
-### Tweets over time
-
-Infobox "📈 Drag horizontally on the graph to filter tweets in the right column."
-
-Chart
-
 ### Ontology
 
 Infobox: "↔️ We gathered some key features to help understand the topic all at once. You can click 🔗 references to see the tweets that inform them."
@@ -87,6 +81,12 @@ Three blocks in a row in two rows, each includes up to 4 items that consist of a
 - Social Relationships
 - Moods & Emotional Tones
 - Key Concepts
+
+### Tweets over time
+
+Infobox "📈 Drag horizontally on the graph to filter tweets in the right column."
+
+Chart
 
 ### Threads and Tweets
 

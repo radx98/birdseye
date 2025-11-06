@@ -425,6 +425,77 @@ const toDate = (value: unknown): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+const toUtcMonthIso = (year: number, monthIndex: number): string => {
+  const date = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0, 0));
+  return date.toISOString();
+};
+
+const buildMonthlyTweetSeries = (timestamps: number[]): { month: string; count: number }[] => {
+  if (!timestamps.length) {
+    return [];
+  }
+
+  let minYear = Number.POSITIVE_INFINITY;
+  let minMonth = Number.POSITIVE_INFINITY;
+  let maxYear = Number.NEGATIVE_INFINITY;
+  let maxMonth = Number.NEGATIVE_INFINITY;
+
+  const counts = new Map<string, number>();
+
+  for (const rawTimestamp of timestamps) {
+    if (!Number.isFinite(rawTimestamp)) {
+      continue;
+    }
+    const value = Math.trunc(rawTimestamp);
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      continue;
+    }
+    const year = date.getUTCFullYear();
+    const monthIndex = date.getUTCMonth();
+    if (year < minYear || (year === minYear && monthIndex < minMonth)) {
+      minYear = year;
+      minMonth = monthIndex;
+    }
+    if (year > maxYear || (year === maxYear && monthIndex > maxMonth)) {
+      maxYear = year;
+      maxMonth = monthIndex;
+    }
+    const key = `${year}-${monthIndex}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  if (
+    !counts.size ||
+    !Number.isFinite(minYear) ||
+    !Number.isFinite(minMonth) ||
+    !Number.isFinite(maxYear) ||
+    !Number.isFinite(maxMonth)
+  ) {
+    return [];
+  }
+
+  const series: { month: string; count: number }[] = [];
+
+  let cursorYear = minYear;
+  let cursorMonth = minMonth;
+  while (cursorYear < maxYear || (cursorYear === maxYear && cursorMonth <= maxMonth)) {
+    const key = `${cursorYear}-${cursorMonth}`;
+    const isoMonth = toUtcMonthIso(cursorYear, cursorMonth);
+    series.push({
+      month: isoMonth,
+      count: counts.get(key) ?? 0,
+    });
+    cursorMonth += 1;
+    if (cursorMonth >= 12) {
+      cursorMonth = 0;
+      cursorYear += 1;
+    }
+  }
+
+  return series;
+};
+
 const medianNumber = (values: number[]): number => {
   if (!values.length) {
     return 0;
@@ -1059,6 +1130,7 @@ export const getUserClusters = async (inputUsername: string): Promise<UserCluste
       ontologyMap.get(clusterId) ?? normalizeOntology({}),
       referencedIds,
     );
+    const tweetsPerMonth = stats ? buildMonthlyTweetSeries(stats.timestamps) : [];
     const referenceDetailsMap = new Map<
       string,
       {
@@ -1118,7 +1190,7 @@ export const getUserClusters = async (inputUsername: string): Promise<UserCluste
       totalLikes: Math.round(stats?.totalLikes ?? 0),
       medianLikes: Math.round(stats ? medianNumber(stats.likes) : 0),
       medianDate: stats ? medianDateIso(stats.timestamps) : null,
-      tweetsPerMonthLabel: "placeholder",
+      tweetsPerMonth,
       mostRepliedTo: replies,
       relatedClusters,
       yearlySummaries: yearlyMap.get(clusterId) ?? [],

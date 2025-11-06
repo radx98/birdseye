@@ -8,6 +8,11 @@ export type RelatedCluster = {
   name: string;
 };
 
+export type ClusterTweetsPerMonthPoint = {
+  month: string;
+  count: number;
+};
+
 export type OntologyEntity = {
   id: string;
   name: string;
@@ -83,7 +88,7 @@ export type ClusterInfo = {
   medianLikes: number;
   totalLikes: number;
   medianDate: string | null;
-  tweetsPerMonthLabel: string;
+  tweetsPerMonth: ClusterTweetsPerMonthPoint[];
   mostRepliedTo: ClusterReplyStat[];
   relatedClusters: RelatedCluster[];
   yearlySummaries: YearlySummary[];
