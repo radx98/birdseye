@@ -103,6 +103,12 @@ export const ClusterSparkline = ({ data }: ClusterSparklineProps) => {
     }
     return scaleLinear().domain(yDomain).range([innerHeight, 0]).nice(4);
   }, [innerHeight, yDomain]);
+  const scales = useMemo(() => {
+    if (!xScale || !yScale) {
+      return null;
+    }
+    return { xScale, yScale };
+  }, [xScale, yScale]);
 
   const linePath = useMemo(() => {
     if (!hasData || !xScale || !yScale) {
@@ -261,11 +267,11 @@ export const ClusterSparkline = ({ data }: ClusterSparklineProps) => {
                 strokeLinecap="round"
                 className="opacity-85"
               />
-              {hover ? (
+              {hover && scales ? (
                 <>
                   <line
-                    x1={xScale(hover.datum.date)}
-                    x2={xScale(hover.datum.date)}
+                    x1={scales.xScale(hover.datum.date)}
+                    x2={scales.xScale(hover.datum.date)}
                     y1={0}
                     y2={innerHeight}
                     stroke="currentColor"
@@ -274,8 +280,8 @@ export const ClusterSparkline = ({ data }: ClusterSparklineProps) => {
                     className="opacity-70"
                   />
                   <circle
-                    cx={xScale(hover.datum.date)}
-                    cy={yScale(hover.datum.count)}
+                    cx={scales.xScale(hover.datum.date)}
+                    cy={scales.yScale(hover.datum.count)}
                     r={3}
                     fill="currentColor"
                     className="opacity-90"
