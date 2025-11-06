@@ -1,13 +1,98 @@
 "use client";
 
+import Image from "next/image";
+import { useMemo, useState } from "react";
+
+import { ClusterSparkline } from "./ClusterSparkline";
 import { useUserExplorer } from "./context";
 import { formatDate, formatHandle, formatNumber } from "./formatters";
+import type { ClusterInfo } from "@/types/cluster";
 
 const stripMarkdownLinks = (value?: string | null) =>
   value ? value.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1") : value ?? "";
 
 const normalizeHandle = (value?: string | null) =>
   value ? value.replace(/^@/, "").trim().toLowerCase() : "";
+
+type SortDirection = "asc" | "desc";
+type ClusterSortKey = "name" | "tweetsCount" | "medianLikes" | "totalLikes" | "medianDate" | "tweetsPerMonth";
+
+const getDefaultDirection = (key: ClusterSortKey): SortDirection => (key === "name" ? "asc" : "desc");
+
+const resolveTweetsPerMonthTotal = (cluster: ClusterInfo) => {
+  if (!cluster || !Array.isArray(cluster.tweetsPerMonth)) {
+    return 0;
+  }
+  let total = 0;
+  for (const entry of cluster.tweetsPerMonth) {
+    if (!entry) {
+      continue;
+    }
+    const count = Number(entry.count);
+    if (Number.isFinite(count)) {
+      total += count;
+    }
+  }
+  return total;
+};
+
+type SortState = {
+  key: ClusterSortKey;
+  direction: SortDirection;
+};
+
+const EMOJI_RANGES: Array<[number, number]> = [
+  [0x1f300, 0x1f5ff],
+  [0x1f600, 0x1f64f],
+  [0x1f680, 0x1f6ff],
+  [0x1f700, 0x1f77f],
+  [0x1f780, 0x1f7ff],
+  [0x1f800, 0x1f8ff],
+  [0x1f900, 0x1f9ff],
+  [0x1fa00, 0x1fa6f],
+  [0x1fa70, 0x1faff],
+  [0x2600, 0x26ff],
+  [0x2700, 0x27bf],
+];
+
+const isEmojiCodePoint = (point: number) => {
+  for (const [start, end] of EMOJI_RANGES) {
+    if (point >= start && point <= end) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const stripLeadingEmoji = (value: string) => {
+  if (!value) {
+    return "";
+  }
+  const trimmed = value.trimStart();
+  if (!trimmed) {
+    return "";
+  }
+
+  const firstCodePoint = trimmed.codePointAt(0);
+  if (firstCodePoint === undefined) {
+    return trimmed;
+  }
+
+  if (!isEmojiCodePoint(firstCodePoint)) {
+    return trimmed;
+  }
+
+  const firstCharLength = firstCodePoint > 0xffff ? 2 : 1;
+  let remainder = trimmed.slice(firstCharLength);
+
+  if (remainder.startsWith("\uFE0F")) {
+    remainder = remainder.slice(1);
+  }
+
+  const withoutLeadingSpace = remainder.replace(/^\s+/, "");
+  const normalized = withoutLeadingSpace.length ? withoutLeadingSpace : remainder.trimStart();
+  return normalized.length ? normalized : trimmed;
+};
 
 export const ClustersSection = () => {
   const {
@@ -23,7 +108,132 @@ export const ClustersSection = () => {
     hasAvailableClusters,
   } = useUserExplorer();
 
+  const [sortState, setSortState] = useState<SortState>({ key: "medianDate", direction: "desc" });
+
+  const sortedClusters = useMemo(() => {
+    if (!filteredClusters.length) {
+      return [];
+    }
+
+    const totalsCache = new Map<string, number>();
+    const getTotal = (cluster: ClusterInfo) => {
+      if (totalsCache.has(cluster.id)) {
+        return totalsCache.get(cluster.id)!;
+      }
+      const total = resolveTweetsPerMonthTotal(cluster);
+      totalsCache.set(cluster.id, total);
+      return total;
+    };
+
+    const next = [...filteredClusters];
+    const { key, direction } = sortState;
+
+    next.sort((a, b) => {
+      switch (key) {
+        case "name": {
+          const rawA = a.name || a.id || "";
+          const rawB = b.name || b.id || "";
+          const labelA = stripLeadingEmoji(rawA).toLowerCase();
+          const labelB = stripLeadingEmoji(rawB).toLowerCase();
+          if (labelA !== labelB) {
+            return direction === "asc" ? labelA.localeCompare(labelB) : labelB.localeCompare(labelA);
+          }
+          break;
+        }
+        case "tweetsCount": {
+          const valueA = a.tweetsCount ?? 0;
+          const valueB = b.tweetsCount ?? 0;
+          if (valueA !== valueB) {
+            return direction === "asc" ? valueA - valueB : valueB - valueA;
+          }
+          break;
+        }
+        case "medianLikes": {
+          const valueA = a.medianLikes ?? 0;
+          const valueB = b.medianLikes ?? 0;
+          if (valueA !== valueB) {
+            return direction === "asc" ? valueA - valueB : valueB - valueA;
+          }
+          break;
+        }
+        case "totalLikes": {
+          const valueA = a.totalLikes ?? 0;
+          const valueB = b.totalLikes ?? 0;
+          if (valueA !== valueB) {
+            return direction === "asc" ? valueA - valueB : valueB - valueA;
+          }
+          break;
+        }
+        case "medianDate": {
+          const timeA = a.medianDate ? Date.parse(a.medianDate) : Number.NaN;
+          const timeB = b.medianDate ? Date.parse(b.medianDate) : Number.NaN;
+          const hasA = Number.isFinite(timeA);
+          const hasB = Number.isFinite(timeB);
+          if (hasA && hasB) {
+            if (timeA !== timeB) {
+              return direction === "asc" ? timeA - timeB : timeB - timeA;
+            }
+          } else if (hasA !== hasB) {
+            return hasA ? -1 : 1;
+          }
+          break;
+        }
+        case "tweetsPerMonth": {
+          const totalA = getTotal(a);
+          const totalB = getTotal(b);
+          if (totalA !== totalB) {
+            return direction === "asc" ? totalA - totalB : totalB - totalA;
+          }
+          break;
+        }
+        default:
+          break;
+      }
+
+      const fallbackA = a.medianDate ? Date.parse(a.medianDate) : Number.NEGATIVE_INFINITY;
+      const fallbackB = b.medianDate ? Date.parse(b.medianDate) : Number.NEGATIVE_INFINITY;
+
+      if (Number.isFinite(fallbackA) && Number.isFinite(fallbackB) && fallbackA !== fallbackB) {
+        return fallbackB - fallbackA;
+      }
+
+      return (b.tweetsCount ?? 0) - (a.tweetsCount ?? 0);
+    });
+
+    return next;
+  }, [filteredClusters, sortState]);
+
+  const handleSort = (key: ClusterSortKey) => {
+    setSortState((prev) => {
+      if (prev.key === key) {
+        return {
+          key,
+          direction: prev.direction === "asc" ? "desc" : "asc",
+        };
+      }
+      return {
+        key,
+        direction: getDefaultDirection(key),
+      };
+    });
+  };
+
   const hasClusterResults = Boolean(clustersData && clustersData.clusters.length > 0);
+const renderSortIcon = (key: ClusterSortKey) => {
+  const isActive = sortState.key === key;
+  return (
+    <Image
+      src="/dropdown.png"
+      alt=""
+      width={12}
+      height={12}
+      aria-hidden="true"
+      className={`ml-auto h-2 w-2 transition-transform ${isActive ? "opacity-70" : "invisible"} ${
+        isActive && sortState.direction === "asc" ? "rotate-180" : ""
+      } dark:invert`}
+    />
+  );
+};
 
   if (!summary && !clustersLoading) {
     return null;
@@ -101,21 +311,109 @@ export const ClustersSection = () => {
 
           <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 transition-colors dark:border-zinc-700 dark:bg-zinc-900/50">
             {hasAvailableClusters ? (
-              <div className="overflow-hidden" style={{ height: "75vh" }}>
-                <div className="h-full overflow-auto">
-                  <table className="min-w-full border-collapse text-sm text-zinc-700 dark:text-zinc-200">
+              <div className="relative" style={{ height: "80vh" }}>
+                <div className="h-full overflow-y-auto overflow-x-auto lg:overflow-x-hidden">
+                  <table className="w-full min-w-[64rem] border-collapse text-sm text-zinc-700 dark:text-zinc-200 lg:min-w-full">
                     <thead className="sticky top-0 z-10 bg-zinc-100 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:bg-zinc-800/80 dark:text-zinc-300">
                       <tr>
-                        <th className="px-4 py-3 text-left">Name</th>
-                        <th className="px-4 py-3 text-right">Number of Tweets</th>
-                        <th className="px-4 py-3 text-right">Median Likes</th>
-                        <th className="px-4 py-3 text-right">Total Likes</th>
-                        <th className="px-4 py-3 text-right">Median Date</th>
-                        <th className="px-4 py-3 text-right">Tweets per Month</th>
+                        <th
+                          className="px-0 py-0 text-left"
+                          scope="col"
+                          aria-sort={sortState.key === "name" ? (sortState.direction === "asc" ? "ascending" : "descending") : undefined}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleSort("name")}
+                            className="flex h-14 w-full items-center justify-between gap-2 px-4 text-left transition-colors hover:bg-zinc-200/60 focus-visible:bg-zinc-200/80 dark:hover:bg-zinc-800/60 dark:focus-visible:bg-zinc-800/70"
+                          >
+                            <span>Name</span>
+                            {renderSortIcon("name")}
+                          </button>
+                        </th>
+                        <th
+                          className="px-0 py-0 text-left"
+                          scope="col"
+                          aria-sort={
+                            sortState.key === "tweetsCount" ? (sortState.direction === "asc" ? "ascending" : "descending") : undefined
+                          }
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleSort("tweetsCount")}
+                            className="flex h-14 w-full items-center justify-between gap-2 px-4 text-left transition-colors hover:bg-zinc-200/60 focus-visible:bg-zinc-200/80 dark:hover:bg-zinc-800/60 dark:focus-visible:bg-zinc-800/70"
+                          >
+                            <span>Tweets</span>
+                            {renderSortIcon("tweetsCount")}
+                          </button>
+                        </th>
+                        <th
+                          className="px-0 py-0 text-left"
+                          scope="col"
+                          aria-sort={
+                            sortState.key === "medianLikes" ? (sortState.direction === "asc" ? "ascending" : "descending") : undefined
+                          }
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleSort("medianLikes")}
+                            className="flex h-14 w-full items-center justify-between gap-2 px-4 text-left transition-colors hover:bg-zinc-200/60 focus-visible:bg-zinc-200/80 dark:hover:bg-zinc-800/60 dark:focus-visible:bg-zinc-800/70"
+                          >
+                            <span>Median Likes</span>
+                            {renderSortIcon("medianLikes")}
+                          </button>
+                        </th>
+                        <th
+                          className="px-0 py-0 text-left"
+                          scope="col"
+                          aria-sort={
+                            sortState.key === "totalLikes" ? (sortState.direction === "asc" ? "ascending" : "descending") : undefined
+                          }
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleSort("totalLikes")}
+                            className="flex h-14 w-full items-center justify-between gap-2 px-4 text-left transition-colors hover:bg-zinc-200/60 focus-visible:bg-zinc-200/80 dark:hover:bg-zinc-800/60 dark:focus-visible:bg-zinc-800/70"
+                          >
+                            <span>Total Likes</span>
+                            {renderSortIcon("totalLikes")}
+                          </button>
+                        </th>
+                        <th
+                          className="px-0 py-0 text-left"
+                          scope="col"
+                          aria-sort={
+                            sortState.key === "medianDate" ? (sortState.direction === "asc" ? "ascending" : "descending") : undefined
+                          }
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleSort("medianDate")}
+                            className="flex h-14 w-full items-center justify-between gap-2 px-4 text-left transition-colors hover:bg-zinc-200/60 focus-visible:bg-zinc-200/80 dark:hover:bg-zinc-800/60 dark:focus-visible:bg-zinc-800/70"
+                          >
+                            <span>Median Date</span>
+                            {renderSortIcon("medianDate")}
+                          </button>
+                        </th>
+                        <th
+                          className="px-0 py-0 text-left"
+                          scope="col"
+                          aria-sort={
+                            sortState.key === "tweetsPerMonth" ? (sortState.direction === "asc" ? "ascending" : "descending") : undefined
+                          }
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleSort("tweetsPerMonth")}
+                            className="flex h-14 w-full items-center justify-between gap-2 px-4 text-left transition-colors hover:bg-zinc-200/60 focus-visible:bg-zinc-200/80 dark:hover:bg-zinc-800/60 dark:focus-visible:bg-zinc-800/70"
+                          >
+                            <span>Tweets per Month</span>
+                            {renderSortIcon("tweetsPerMonth")}
+                          </button>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredClusters.map((cluster) => {
+                      {sortedClusters.map((cluster) => {
                         const isSelected = selectedCluster?.id === cluster.id;
                         return (
                           <tr
@@ -142,7 +440,12 @@ export const ClustersSection = () => {
                             <td className="px-4 py-3 text-right">{formatNumber(cluster.medianLikes)}</td>
                             <td className="px-4 py-3 text-right">{formatNumber(cluster.totalLikes)}</td>
                             <td className="px-4 py-3 text-right">{formatDate(cluster.medianDate)}</td>
-                            <td className="px-4 py-3 text-right">{cluster.tweetsPerMonthLabel || "placeholder"}</td>
+                            <td className="relative px-4 py-3 align-middle min-w-[12rem]">
+                              <div className="absolute inset-x-0 inset-y-1">
+                                <ClusterSparkline data={cluster.tweetsPerMonth} />
+                              </div>
+                              <span className="sr-only">Tweets per month sparkline</span>
+                            </td>
                           </tr>
                         );
                       })}

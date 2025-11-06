@@ -58,49 +58,61 @@ export default async function Home() {
           </div>
         </header>
 
-        <section className="rounded-lg bg-white p-4 sm:p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
-          <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
-            Key features
-          </h2>
-          <ul className="mt-6 grid auto-rows-fr gap-4 text-sm text-zinc-600 transition-colors sm:grid-cols-2 dark:text-zinc-300">
-            <li className="flex h-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
-              <span role="img" aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center text-2xl leading-none">
-                📊
-              </span>
-              <span className="flex-1 min-w-0 leading-relaxed">
-                Topics are sorted by date (newest first)
-              </span>
-            </li>
-            <li className="flex h-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
-              <span role="img" aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center text-2xl leading-none">
-                🔍
-              </span>
-              <span className="flex-1 min-w-0 leading-relaxed">
-                Each cluster shows stats, summaries, and yearly evolution
-              </span>
-            </li>
-            <li className="flex h-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
-              <span role="img" aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center text-2xl leading-none">
-                📈
-              </span>
-              <span className="flex-1 min-w-0 leading-relaxed">
-                Timeline charts help track topic engagement over time
-              </span>
-            </li>
-            <li className="flex h-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200">
-              <span role="img" aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center text-2xl leading-none">
-                🧵
-              </span>
-              <span className="flex-1 min-w-0 leading-relaxed">
-                View full threads and conversations within each topic
-              </span>
-            </li>
-          </ul>
-          <p className="mt-8 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 transition-colors dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-200">
-            Note: While most clusters are meaningful, some (especially the largest ones) may be too
-            broad or noisy. The tool works best for exploration - try sorting by median date or likes
-            to find interesting patterns!
-          </p>
+        <section className="relative overflow-hidden rounded-lg bg-white/80 p-4 sm:p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900/80 dark:ring-zinc-700">
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-0 flex items-end">
+            <Image
+              src="/birds_bg.svg"
+              alt=""
+              width={2421}
+              height={1653}
+              aria-hidden="true"
+              className="h-full w-auto translate-x-[15%] translate-y-[25%] rotate-[15deg] scale-x-[-1.5] scale-y-[1.5] opacity-15 transition dark:invert dark:opacity-12"
+            />
+          </div>
+          <div className="relative z-10">
+            <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
+              Key features
+            </h2>
+            <ul className="mt-6 grid auto-rows-fr gap-4 text-sm text-zinc-600 transition-colors sm:grid-cols-2 dark:text-zinc-300">
+              <li className="flex h-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-200">
+                <span role="img" aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center text-2xl leading-none">
+                  📊
+                </span>
+                <span className="flex-1 min-w-0 leading-relaxed">
+                  Topics are sorted by date (newest first)
+                </span>
+              </li>
+              <li className="flex h-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-200">
+                <span role="img" aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center text-2xl leading-none">
+                  🔍
+                </span>
+                <span className="flex-1 min-w-0 leading-relaxed">
+                  Each cluster shows stats, summaries, and yearly evolution
+                </span>
+              </li>
+              <li className="flex h-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-200">
+                <span role="img" aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center text-2xl leading-none">
+                  📈
+                </span>
+                <span className="flex-1 min-w-0 leading-relaxed">
+                  Timeline charts help track topic engagement over time
+                </span>
+              </li>
+              <li className="flex h-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 transition-colors dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-200">
+                <span role="img" aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center text-2xl leading-none">
+                  🧵
+                </span>
+                <span className="flex-1 min-w-0 leading-relaxed">
+                  View full threads and conversations within each topic
+                </span>
+              </li>
+            </ul>
+            <p className="mt-8 rounded-lg border border-amber-200 bg-amber-50/80 px-5 py-4 text-sm text-amber-800 transition-colors dark:border-amber-400/40 dark:bg-amber-500/[0.15] dark:text-amber-200">
+              Note: While most clusters are meaningful, some (especially the largest ones) may be too
+              broad or noisy. The tool works best for exploration - try sorting by median date or likes
+              to find interesting patterns!
+            </p>
+          </div>
         </section>
 
         <UserExplorerProvider users={users}>

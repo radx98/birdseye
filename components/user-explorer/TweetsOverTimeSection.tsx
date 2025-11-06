@@ -26,6 +26,8 @@ const DEFAULT_HEIGHT = 320;
 const MINIMUM_WIDTH = CHART_MARGIN.left + CHART_MARGIN.right + 16;
 const TOOLTIP_WIDTH = 180;
 const TOOLTIP_HEIGHT = 64;
+const TOOLTIP_OFFSET = 12;
+const TOOLTIP_VIEWPORT_PADDING = 8;
 const DOUBLE_TAP_MS = 300;
 
 type TimelineDatum = {
@@ -835,17 +837,37 @@ export const TweetsOverTimeSection = () => {
     if (dragRange) {
       return;
     }
+
     const host = containerRef.current;
-    if (!host) {
-      return;
+    const doc = host?.ownerDocument ?? (typeof document !== "undefined" ? document : null);
+    const view = doc?.defaultView ?? (typeof window !== "undefined" ? window : null);
+
+    const viewportWidth = view?.innerWidth ?? doc?.documentElement?.clientWidth ?? host?.clientWidth ?? 0;
+    const viewportHeight = view?.innerHeight ?? doc?.documentElement?.clientHeight ?? host?.clientHeight ?? 0;
+
+    const desiredLeft = event.clientX + TOOLTIP_OFFSET;
+    const preferredTop = event.clientY - TOOLTIP_HEIGHT - TOOLTIP_OFFSET;
+
+    let left = desiredLeft;
+    let top = preferredTop;
+
+    if (viewportWidth > 0) {
+      const maxLeft = viewportWidth - TOOLTIP_WIDTH - TOOLTIP_VIEWPORT_PADDING;
+      left = clamp(desiredLeft, TOOLTIP_VIEWPORT_PADDING, maxLeft);
     }
-    const bounds = host.getBoundingClientRect();
-    const desiredX = event.clientX - bounds.left + 12;
-    const desiredY = event.clientY - bounds.top - TOOLTIP_HEIGHT;
-    const maxLeft = bounds.width - TOOLTIP_WIDTH - 8;
-    const clampedX = clamp(desiredX, CHART_MARGIN.left, maxLeft);
-    const clampedY = clamp(desiredY, CHART_MARGIN.top, bounds.height - TOOLTIP_HEIGHT - 8);
-    setTooltip({ datum, x: clampedX, y: clampedY });
+
+    if (viewportHeight > 0) {
+      const maxTop = viewportHeight - TOOLTIP_HEIGHT - TOOLTIP_VIEWPORT_PADDING;
+      const minTop = TOOLTIP_VIEWPORT_PADDING;
+      if (preferredTop < minTop) {
+        const alternateTop = event.clientY + TOOLTIP_OFFSET;
+        top = clamp(alternateTop, minTop, maxTop);
+      } else {
+        top = clamp(preferredTop, minTop, maxTop);
+      }
+    }
+
+    setTooltip({ datum, x: left, y: top });
   };
 
   const handleTooltipLeave = () => {
@@ -1005,7 +1027,7 @@ export const TweetsOverTimeSection = () => {
                 style={{ left: sliderLeft, width: sliderWidth }}
               />
               <div
-                className="absolute top-1/2 z-0 -translate-y-1/2 cursor-grab rounded-lg border border-zinc-300/70 bg-zinc-200/60 transition-colors active:cursor-grabbing dark:border-zinc-600/70 dark:bg-zinc-700/50"
+                className="absolute top-1/2 z-0 -translate-y-1/2 cursor-grab rounded-xs border border-zinc-300/70 bg-zinc-200/60 transition-colors active:cursor-grabbing dark:border-zinc-600/70 dark:bg-zinc-700/50"
                 style={{
                   left: highlightLeft,
                   width: highlightWidth,
@@ -1066,7 +1088,7 @@ export const TweetsOverTimeSection = () => {
         ) : null}
         {tooltip && (
           <div
-            className="pointer-events-none absolute rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 shadow-lg transition-colors dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+            className="pointer-events-none fixed z-50 rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 shadow-lg transition-colors dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
             style={{ left: tooltip.x, top: tooltip.y, width: TOOLTIP_WIDTH }}
           >
             <div className="text-zinc-900 dark:text-white">{formatTooltipMonth(tooltip.datum.date)}</div>
