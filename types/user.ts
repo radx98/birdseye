@@ -1,3 +1,8 @@
+export type UserTweetsOverTimePoint = {
+  month: string;
+  count: number;
+};
+
 export type UserSummary = {
   username: string;
   handle: string;
@@ -8,4 +13,5 @@ export type UserSummary = {
   following: number;
   likes: number;
   avatarUrl: string;
+  tweetsOverTime: UserTweetsOverTimePoint[];
 };
