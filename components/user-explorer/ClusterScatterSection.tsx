@@ -88,6 +88,27 @@ export const ClusterScatterSection = () => {
     return scale;
   }, [embeddings]);
 
+  const clusterSummaries = useMemo(() => {
+    if (!embeddings.length) {
+      return [];
+    }
+    const counts = new Map<string, { id: string; name: string; count: number }>();
+    for (const embedding of embeddings) {
+      const id = embedding.clusterId || "unassigned";
+      const current = counts.get(id);
+      if (current) {
+        current.count += 1;
+      } else {
+        counts.set(id, {
+          id,
+          name: embedding.clusterName || id,
+          count: 1,
+        });
+      }
+    }
+    return Array.from(counts.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [embeddings]);
+
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || !embeddings.length) {
       return;
@@ -157,23 +178,6 @@ export const ClusterScatterSection = () => {
       .selectAll("line, path")
       .attr("stroke", "currentColor")
       .attr("stroke-width", 1);
-
-    group
-      .append("text")
-      .attr("x", width / 2)
-      .attr("y", height + 35)
-      .attr("text-anchor", "middle")
-      .attr("class", "text-xs text-zinc-600 dark:text-zinc-400 fill-current")
-      .text("Dimension 1");
-
-    group
-      .append("text")
-      .attr("transform", "rotate(-90)")
-      .attr("x", -height / 2)
-      .attr("y", -35)
-      .attr("text-anchor", "middle")
-      .attr("class", "text-xs text-zinc-600 dark:text-zinc-400 fill-current")
-      .text("Dimension 2");
 
     const tooltip = d3
       .select("body")
@@ -279,13 +283,39 @@ export const ClusterScatterSection = () => {
     );
   } else {
     body = (
-      <div
-        ref={containerRef}
-        className="relative rounded-lg border border-zinc-200 bg-zinc-50 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60"
-        style={{ height: "60vh", width: "100%" }}
-      >
-        <svg ref={svgRef} width="100%" height="100%" className="overflow-hidden" />
-      </div>
+      <>
+        <div
+          ref={containerRef}
+          className="relative rounded-lg border border-zinc-200 bg-zinc-50 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60"
+          style={{ height: "60vh", width: "100%" }}
+        >
+          <svg ref={svgRef} width="100%" height="100%" className="overflow-hidden" />
+        </div>
+        {clusterSummaries.length > 0 && (
+          <div className="grid gap-3 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+            {clusterSummaries.map((cluster) => {
+              const color = colorScale(cluster.id) ?? "#7c3aed";
+              return (
+                <div
+                  key={cluster.id}
+                  className="relative flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60"
+                >
+                  <span
+                    className="absolute left-1 top-1 bottom-1 w-[6px] rounded-full"
+                    style={{ backgroundColor: color }}
+                    aria-hidden="true"
+                  />
+                  <div className="ml-3 flex flex-col">
+                    <span className="text-xs font-medium text-zinc-700 transition-colors dark:text-zinc-200">
+                      {cluster.name}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </>
     );
   }
 
