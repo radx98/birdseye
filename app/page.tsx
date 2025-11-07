@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   ClustersSection,
+  ClusterScatterSection,
   SelectUserPanel,
   UserExplorerProvider,
   YearlySummariesSection,
@@ -131,6 +132,7 @@ export default async function Home() {
             </section>
 
             <ClustersSection />
+            <ClusterScatterSection />
             <YearlySummariesSection />
             <OntologySection />
             <TweetsOverTimeSection />

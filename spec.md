@@ -65,6 +65,10 @@ Three blocks in a row that show information on the cluster selected in the table
 2. Most replied to: list of users with number of replies in brackets (takes 25% of horizontal space)
 3. Related Clusters: list of related clusters (takes 25% of horizontal space)
 
+### Cluster distribution
+
+- Responsive scatter plot of tweets projected to 2D, spanning the full width with a 60vh container and colored by cluster.
+
 ### Yearly summaries
 
 - Year selector (tabs)
