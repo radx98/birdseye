@@ -32,7 +32,6 @@ const buildTweetUrl = (tweetId: string, username: string | null | undefined) => 
 
 export const ThreadsSection = () => {
   const {
-    summary,
     clustersData,
     threadsLoading,
     threadsError,
@@ -50,6 +49,7 @@ export const ThreadsSection = () => {
     hasThreadData,
     hasVisibleThreads,
     selectedCluster,
+    canShowThreadsSection,
   } = useUserExplorer();
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -227,6 +227,7 @@ export const ThreadsSection = () => {
                                 alt={tweet.username ? `Avatar of ${formatHandle(tweet.username)}` : "Avatar placeholder"}
                                 width={36}
                                 height={36}
+                                style={{ height: "auto" }}
                                 className="h-9 w-9 rounded-full border border-zinc-200 object-cover dark:border-zinc-700"
                               />
                               <div className="flex flex-1 flex-col gap-2">
@@ -344,7 +345,7 @@ export const ThreadsSection = () => {
     canScrollRight,
   ]);
 
-  if (!summary) {
+  if (!canShowThreadsSection) {
     return null;
   }
 

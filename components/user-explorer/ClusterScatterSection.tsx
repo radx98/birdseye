@@ -13,7 +13,6 @@ const MARGIN = { top: 20, right: 20, bottom: 40, left: 50 };
 
 export const ClusterScatterSection = () => {
   const {
-    summary,
     clustersLoading,
     clustersData,
     embeddingsData,
@@ -22,6 +21,7 @@ export const ClusterScatterSection = () => {
     hasAvailableClusters,
     selectedCluster,
     setSelectedClusterId,
+    canShowClusterScatterSection,
   } = useUserExplorer();
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -277,17 +277,12 @@ export const ClusterScatterSection = () => {
     };
   }, [embeddings, colorScale, resizeTrigger, activeClusterId, handleClusterActivate, clearClusterSelection]);
 
-  if (!summary && !clustersLoading && !embeddingsLoading) {
+  if (!canShowClusterScatterSection) {
     return null;
   }
 
   const showLoading = embeddingsLoading || (clustersLoading && !hasAvailableClusters);
   const hasData = embeddings.length > 0 && hasAvailableClusters;
-  const projectionSource =
-    embeddingsData && embeddingsData.originalDimensions > 1
-      ? `${embeddingsData.originalDimensions}-dimensional embedding`
-      : "high-dimensional embedding";
-
   let body;
 
   if (showLoading) {

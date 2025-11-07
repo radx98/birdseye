@@ -63,6 +63,12 @@ export type ExplorerContextValue = {
   hasVisibleThreads: boolean;
   timelineRange: TimelineRange | null;
   setTimelineRange: (range: TimelineRange | null) => void;
+  canShowClustersSection: boolean;
+  canShowClusterScatterSection: boolean;
+  canShowYearlySummariesSection: boolean;
+  canShowOntologySection: boolean;
+  canShowTweetsOverTimeSection: boolean;
+  canShowThreadsSection: boolean;
 };
 
 const UserExplorerContext = createContext<ExplorerContextValue | null>(null);
@@ -584,6 +590,16 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
   const hasThreadData = Boolean(threadsData?.threads?.length);
   const hasVisibleThreads = visibleThreads.length > 0;
 
+  const summaryHydrated = Boolean(summary);
+  const canShowClustersSection = summaryHydrated;
+  const clustersSectionHydrated = canShowClustersSection && !clustersLoading;
+  const canShowClusterScatterSection = clustersSectionHydrated;
+  const clusterScatterHydrated = canShowClusterScatterSection && !embeddingsLoading;
+  const canShowYearlySummariesSection = clusterScatterHydrated;
+  const canShowOntologySection = canShowYearlySummariesSection;
+  const canShowTweetsOverTimeSection = canShowOntologySection;
+  const canShowThreadsSection = canShowTweetsOverTimeSection;
+
   const contextValue: ExplorerContextValue = {
     selectOptions,
     selectedUser,
@@ -624,6 +640,12 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     hasVisibleThreads,
     timelineRange,
     setTimelineRange,
+    canShowClustersSection,
+    canShowClusterScatterSection,
+    canShowYearlySummariesSection,
+    canShowOntologySection,
+    canShowTweetsOverTimeSection,
+    canShowThreadsSection,
   };
 
   return <UserExplorerContext.Provider value={contextValue}>{children}</UserExplorerContext.Provider>;

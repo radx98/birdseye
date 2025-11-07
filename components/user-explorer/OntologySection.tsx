@@ -9,12 +9,12 @@ import { extractTrailingTcoLinks } from "./text";
 
 export const OntologySection = () => {
   const {
-    summary,
     clustersLoading,
     selectedCluster,
     hasAvailableClusters,
     threadsData,
     threadsLoading,
+    canShowOntologySection,
   } = useUserExplorer();
 
   const [referenceOpenMap, setReferenceOpenMap] = useState<Record<string, boolean>>({});
@@ -104,7 +104,7 @@ export const OntologySection = () => {
     return map;
   }, [selectedCluster, threadsData]);
 
-  if (!summary) {
+  if (!canShowOntologySection) {
     return null;
   }
 
@@ -280,6 +280,7 @@ export const OntologySection = () => {
                                   alt={data.username ? `Avatar of ${formatHandle(data.username)}` : "Tweet avatar"}
                                   width={36}
                                   height={36}
+                                  style={{ height: "auto" }}
                                   className="h-9 w-9 rounded-full border border-zinc-200 object-cover dark:border-zinc-700"
                                 />
                                 <div className="flex flex-1 flex-col gap-2">

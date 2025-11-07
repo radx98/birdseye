@@ -66,6 +66,7 @@ export default async function Home() {
               alt=""
               width={2421}
               height={1653}
+              loading="eager"
               aria-hidden="true"
               className="h-full w-auto translate-x-[15%] translate-y-[25%] rotate-[15deg] scale-x-[-1.5] scale-y-[1.5] opacity-15 transition dark:invert dark:opacity-12"
             />
@@ -157,7 +158,7 @@ export default async function Home() {
               alt=""
               width={22}
               height={22}
-              className="transition dark:invert"
+              className="h-[22px] w-auto transition dark:invert"
             />
           </a>
         </footer>
