@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { ClusterEmbeddingPoint } from "@/types/embedding";
 import { useUserExplorer } from "./context";
@@ -20,6 +20,8 @@ export const ClusterScatterSection = () => {
     embeddingsLoading,
     embeddingsError,
     hasAvailableClusters,
+    selectedCluster,
+    setSelectedClusterId,
   } = useUserExplorer();
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -58,6 +60,34 @@ export const ClusterScatterSection = () => {
       };
     });
   }, [embeddingsData, clusterNameMap]);
+
+  const [activeClusterId, setActiveClusterId] = useState<string | null>(null);
+  const lastContextClusterIdRef = useRef<string | null>(null);
+  const selectedClusterId = selectedCluster?.id ?? null;
+
+  useEffect(() => {
+    if (selectedClusterId !== lastContextClusterIdRef.current) {
+      lastContextClusterIdRef.current = selectedClusterId;
+      setActiveClusterId(selectedClusterId);
+    }
+  }, [selectedClusterId]);
+
+  const clearClusterSelection = useCallback(() => {
+    setActiveClusterId((current) => (current !== null ? null : current));
+  }, []);
+
+  const handleClusterActivate = useCallback(
+    (clusterId: string) => {
+      setActiveClusterId((current) => {
+        if (current === clusterId) {
+          return null;
+        }
+        return clusterId;
+      });
+      setSelectedClusterId(clusterId);
+    },
+    [setSelectedClusterId],
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -189,6 +219,15 @@ export const ClusterScatterSection = () => {
       .style("left", "0px")
       .style("top", "0px");
 
+    group
+      .append("rect")
+      .attr("width", width)
+      .attr("height", height)
+      .attr("fill", "transparent")
+      .on("click", () => {
+        clearClusterSelection();
+      });
+
     const pointsGroup = group.append("g").attr("clip-path", `url(#${clipId})`);
 
     pointsGroup
@@ -200,9 +239,15 @@ export const ClusterScatterSection = () => {
       .attr("cy", (datum) => yScale(datum.y))
       .attr("r", 3)
       .attr("fill", (datum) => colorScale(datum.clusterId) ?? "#7c3aed")
-      .attr("opacity", 0.6)
+      .attr("opacity", (datum) => {
+        if (activeClusterId && datum.clusterId !== activeClusterId) {
+          return 0.15;
+        }
+        return 0.7;
+      })
       .attr("class", "transition-opacity hover:opacity-100 cursor-pointer")
       .on("mouseover", function (event, datum) {
+        event.stopPropagation();
         d3.select(this).attr("opacity", 1).attr("r", 5);
         tooltip
           .style("opacity", 1)
@@ -214,15 +259,23 @@ export const ClusterScatterSection = () => {
           .style("left", `${pointerEvent.clientX + 10}px`)
           .style("top", `${pointerEvent.clientY - 10}px`);
       })
-      .on("mouseout", function () {
-        d3.select(this).attr("opacity", 0.6).attr("r", 3);
+      .on("mouseout", function (event, datum) {
+        if (activeClusterId && datum.clusterId !== activeClusterId) {
+          d3.select(this).attr("opacity", 0.15).attr("r", 3);
+        } else {
+          d3.select(this).attr("opacity", 0.7).attr("r", 3);
+        }
         tooltip.style("opacity", 0);
+      })
+      .on("click", function (event, datum) {
+        event.stopPropagation();
+        handleClusterActivate(datum.clusterId);
       });
 
     return () => {
       tooltip.remove();
     };
-  }, [embeddings, colorScale, resizeTrigger]);
+  }, [embeddings, colorScale, resizeTrigger, activeClusterId, handleClusterActivate, clearClusterSelection]);
 
   if (!summary && !clustersLoading && !embeddingsLoading) {
     return null;
@@ -295,10 +348,23 @@ export const ClusterScatterSection = () => {
           <div className="grid gap-3 pt-3 sm:grid-cols-2 lg:grid-cols-3">
             {clusterSummaries.map((cluster) => {
               const color = colorScale(cluster.id) ?? "#7c3aed";
+              const isActive = activeClusterId === cluster.id;
+              const isDimmed = Boolean(activeClusterId && cluster.id !== activeClusterId);
               return (
-                <div
+                <button
+                  type="button"
                   key={cluster.id}
-                  className="relative flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60"
+                  onClick={() => handleClusterActivate(cluster.id)}
+                  className={`relative flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900/60 dark:focus-visible:ring-zinc-300 ${isDimmed ? "opacity-50" : ""}`}
+                  aria-pressed={isActive}
+                  style={
+                    isActive
+                      ? {
+                          borderColor: color,
+                          boxShadow: `0 0 0 1px ${color}`,
+                        }
+                      : undefined
+                  }
                 >
                   <span
                     className="absolute left-1 top-1 bottom-1 w-[6px] rounded-full"
@@ -310,7 +376,7 @@ export const ClusterScatterSection = () => {
                       {cluster.name}
                     </span>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
