@@ -176,11 +176,11 @@ export const ClusterScatterSection = () => {
       .text("Dimension 2");
 
     const tooltip = d3
-      .select(container)
+      .select("body")
       .append("div")
       .attr(
         "class",
-        "absolute pointer-events-none opacity-0 transition-opacity duration-200 bg-black text-white dark:bg-white dark:text-zinc-900 text-xs rounded px-3 py-2 shadow-lg z-10",
+        "fixed pointer-events-none opacity-0 transition-opacity duration-200 bg-black text-white dark:bg-white dark:text-zinc-900 text-xs rounded px-3 py-2 shadow-lg z-50",
       )
       .style("left", "0px")
       .style("top", "0px");
@@ -200,18 +200,15 @@ export const ClusterScatterSection = () => {
       .attr("class", "transition-opacity hover:opacity-100 cursor-pointer")
       .on("mouseover", function (event, datum) {
         d3.select(this).attr("opacity", 1).attr("r", 5);
-        const trimmedTweetId = datum.tweetId ? datum.tweetId.slice(0, 18) : "";
         tooltip
           .style("opacity", 1)
-          .html(
-            `<strong>${datum.clusterName}</strong><br/>Tweet: ${
-              trimmedTweetId || "Unknown"
-            }${datum.tweetId.length > 18 ? "…" : ""}`,
-          );
+          .html(`<strong>${datum.clusterName}</strong>`);
       })
       .on("mousemove", function (event) {
-        const [x, y] = d3.pointer(event, container);
-        tooltip.style("left", `${x + 10}px`).style("top", `${y - 10}px`);
+        const pointerEvent = event as PointerEvent;
+        tooltip
+          .style("left", `${pointerEvent.clientX + 10}px`)
+          .style("top", `${pointerEvent.clientY - 10}px`);
       })
       .on("mouseout", function () {
         d3.select(this).attr("opacity", 0.6).attr("r", 3);
