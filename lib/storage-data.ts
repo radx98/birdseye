@@ -4,6 +4,7 @@ import { GetObjectCommand, ListBucketsCommand, ListObjectsV2Command, S3Client } 
 import { BufferReader, Parser as PickleParser } from "pickleparser";
 import { fetchAvatarsByAccountId } from "@/lib/supabase-client";
 import type { ClusterOntology, UserClusters } from "@/types/cluster";
+import type { UserEmbeddings } from "@/types/embedding";
 import type { ThreadEntry, ThreadTweet, UserThreads } from "@/types/thread";
 import type { UserSummary } from "@/types/user";
 
@@ -282,6 +283,283 @@ const readParquetRecords = async (
   return rows;
 };
 
+type ParsedNpyArray =
+  | {
+      data: Float32Array | Float64Array;
+      shape: number[];
+      dtype: string;
+    }
+  | null;
+
+const parseNpyHeader = (rawHeader: string) => {
+  const header = rawHeader.trim();
+  const descrMatch = header.match(/'descr'\s*:\s*'([^']+)'/);
+  const fortranMatch = header.match(/'fortran_order'\s*:\s*(True|False)/);
+  const shapeMatch = header.match(/'shape'\s*:\s*\(([^)]*)\)/);
+
+  if (!descrMatch || !fortranMatch || !shapeMatch) {
+    throw new Error(`Unsupported NPY header format: ${header}`);
+  }
+
+  const shapeValues = shapeMatch[1]
+    .split(",")
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  return {
+    descr: descrMatch[1],
+    fortranOrder: fortranMatch[1] === "True",
+    shape: shapeValues,
+  };
+};
+
+const readNpyArray = async (username: string, filename: string): Promise<ParsedNpyArray> => {
+  const key = `${username}/${filename}`;
+  const buffer = await fetchObjectBuffer(key);
+  if (!buffer) {
+    return null;
+  }
+
+  if (buffer.length < 10 || buffer[0] !== 0x93 || buffer.toString("utf8", 1, 6) !== "NUMPY") {
+    throw new Error(`Invalid NPY file "${key}"`);
+  }
+
+  const major = buffer[6];
+  const headerLength =
+    major <= 1 ? buffer.readUInt16LE(8) : buffer.readUInt32LE(8);
+  const headerOffset = major <= 1 ? 10 : 12;
+  const headerEnd = headerOffset + headerLength;
+
+  if (headerEnd > buffer.length) {
+    throw new Error(`Corrupted NPY header in "${key}"`);
+  }
+
+  const headerRaw = buffer.toString("latin1", headerOffset, headerEnd);
+  const { descr, fortranOrder, shape } = parseNpyHeader(headerRaw);
+
+  if (!Array.isArray(shape) || shape.length === 0) {
+    throw new Error(`Missing shape information for "${key}"`);
+  }
+
+  const payload = buffer.subarray(headerEnd);
+  const payloadBuffer = payload.buffer.slice(
+    payload.byteOffset,
+    payload.byteOffset + payload.byteLength,
+  );
+
+  let typed: Float32Array | Float64Array;
+  if (descr === "<f4" || descr === "|f4" || descr === "f4") {
+    typed = new Float32Array(payloadBuffer);
+  } else if (descr === "<f8" || descr === "|f8" || descr === "f8") {
+    typed = new Float64Array(payloadBuffer);
+  } else {
+    throw new Error(`Unsupported dtype "${descr}" in "${key}"`);
+  }
+
+  if (fortranOrder) {
+    const rowCount = shape[0] ?? 0;
+    const columnCount = shape[1] ?? 1;
+    if (rowCount > 0 && columnCount > 0) {
+      const converted =
+        typed instanceof Float32Array
+          ? new Float32Array(rowCount * columnCount)
+          : new Float64Array(rowCount * columnCount);
+
+      for (let col = 0; col < columnCount; col += 1) {
+        for (let row = 0; row < rowCount; row += 1) {
+          converted[row * columnCount + col] = typed[col * rowCount + row];
+        }
+      }
+
+      typed = converted;
+    }
+  }
+
+  return {
+    data: typed,
+    shape,
+    dtype: descr,
+  };
+};
+
+const dotProduct = (left: number[], right: number[]): number => {
+  let total = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    total += left[index]! * (right[index] ?? 0);
+  }
+  return total;
+};
+
+const normalizeVector = (vector: number[]): number[] => {
+  const magnitude = Math.hypot(...vector);
+  if (magnitude === 0) {
+    return vector.map(() => 0);
+  }
+  return vector.map((value) => value / magnitude);
+};
+
+const multiplyMatrixVector = (matrix: number[][], vector: number[]): number[] => {
+  const result: number[] = new Array(matrix.length).fill(0);
+  for (let row = 0; row < matrix.length; row += 1) {
+    const entries = matrix[row] ?? [];
+    let total = 0;
+    for (let column = 0; column < entries.length; column += 1) {
+      total += (entries[column] ?? 0) * (vector[column] ?? 0);
+    }
+    result[row] = total;
+  }
+  return result;
+};
+
+const powerIteration = (
+  matrix: number[][],
+  options?: { maxIterations?: number; tolerance?: number; initial?: number[] },
+) => {
+  const dimension = matrix.length;
+  const maxIterations = options?.maxIterations ?? 150;
+  const tolerance = options?.tolerance ?? 1e-6;
+  let vector =
+    options?.initial && options.initial.length === dimension
+      ? [...options.initial]
+      : Array.from({ length: dimension }, () => Math.random() - 0.5);
+
+  vector = normalizeVector(vector);
+
+  let eigenvalue = 0;
+
+  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+    const next = multiplyMatrixVector(matrix, vector);
+    const nextMagnitude = Math.hypot(...next);
+    if (nextMagnitude === 0) {
+      break;
+    }
+    const normalized = next.map((value) => value / nextMagnitude);
+
+    const difference = Math.hypot(
+      ...normalized.map((value, index) => value - vector[index]!),
+    );
+
+    vector = normalized;
+    eigenvalue = dotProduct(vector, multiplyMatrixVector(matrix, vector));
+
+    if (difference < tolerance) {
+      break;
+    }
+  }
+
+  return { vector, eigenvalue };
+};
+
+const projectEmbeddingsTo2D = (
+  values: Float32Array | Float64Array,
+  rowCount: number,
+  dimension: number,
+): Array<{ x: number; y: number }> => {
+  if (rowCount === 0 || dimension === 0) {
+    return [];
+  }
+
+  if (dimension === 1) {
+    let total = 0;
+    for (let index = 0; index < rowCount; index += 1) {
+      total += values[index] ?? 0;
+    }
+    const mean = rowCount > 0 ? total / rowCount : 0;
+    const mapped = new Array(rowCount);
+    for (let index = 0; index < rowCount; index += 1) {
+      mapped[index] = { x: Number(values[index] - mean), y: 0 };
+    }
+    return mapped;
+  }
+
+  const means = new Array<number>(dimension).fill(0);
+  for (let row = 0; row < rowCount; row += 1) {
+    const base = row * dimension;
+    for (let col = 0; col < dimension; col += 1) {
+      means[col] += values[base + col] ?? 0;
+    }
+  }
+  for (let col = 0; col < dimension; col += 1) {
+    means[col] /= rowCount;
+  }
+
+  const covariance = Array.from({ length: dimension }, () =>
+    new Array<number>(dimension).fill(0),
+  );
+
+  for (let row = 0; row < rowCount; row += 1) {
+    const base = row * dimension;
+    for (let i = 0; i < dimension; i += 1) {
+      const centeredI = (values[base + i] ?? 0) - means[i]!;
+      for (let j = i; j < dimension; j += 1) {
+        const centeredJ = (values[base + j] ?? 0) - means[j]!;
+        covariance[i]![j] += centeredI * centeredJ;
+      }
+    }
+  }
+
+  const divisor = rowCount > 1 ? rowCount - 1 : 1;
+  for (let i = 0; i < dimension; i += 1) {
+    for (let j = i; j < dimension; j += 1) {
+      const value = covariance[i]![j]! / divisor;
+      covariance[i]![j] = value;
+      covariance[j]![i] = value;
+    }
+  }
+
+  const first = powerIteration(covariance);
+  const eigenvalue1 = first.eigenvalue;
+  let component1 = normalizeVector(first.vector);
+
+  if (!Number.isFinite(eigenvalue1)) {
+    component1 = Array.from({ length: dimension }, (_, index) => (index === 0 ? 1 : 0));
+  }
+
+  const deflated = covariance.map((row, rowIndex) =>
+    row.map(
+      (value, columnIndex) =>
+        value - eigenvalue1 * component1[rowIndex]! * component1[columnIndex]!,
+    ),
+  );
+
+  const second = powerIteration(deflated, {
+    initial: Array.from({ length: dimension }, (_, index) =>
+      index === 0 ? 0 : Math.random() - 0.5,
+    ),
+  });
+
+  let component2 = normalizeVector(second.vector);
+
+  const projection = dotProduct(component1, component2);
+  if (Math.abs(projection) > 1e-5) {
+    component2 = normalizeVector(
+      component2.map((value, index) => value - projection * component1[index]!),
+    );
+  }
+
+  const hasComponent2 = component2.some((value) => Math.abs(value) > 1e-8);
+  if (!hasComponent2) {
+    component2 = Array.from({ length: dimension }, (_, index) =>
+      index === 1 ? 1 : 0,
+    );
+  }
+
+  const projected: Array<{ x: number; y: number }> = new Array(rowCount);
+  for (let row = 0; row < rowCount; row += 1) {
+    const base = row * dimension;
+    let x = 0;
+    let y = 0;
+    for (let col = 0; col < dimension; col += 1) {
+      const centered = (values[base + col] ?? 0) - means[col]!;
+      x += centered * component1[col]!;
+      y += centered * component2[col]!;
+    }
+    projected[row] = { x, y };
+  }
+
+  return projected;
+};
+
 const convertPickleValue = (value: unknown, seen: WeakMap<object, unknown>): unknown => {
   if (!value) {
     return value;
@@ -407,6 +685,7 @@ const TWEET_ROW_COLUMNS = [
 ];
 
 const tweetRowsCache = new Map<string, Promise<NormalizedTweetRow[]>>();
+const embeddingsCache = new Map<string, Promise<UserEmbeddings | null>>();
 
 const loadTweetRows = async (username: string): Promise<NormalizedTweetRow[]> => {
   const normalizedUsername = normalizeUsername(username);
@@ -1627,10 +1906,100 @@ export const getUserThreads = async (
   return { threads };
 };
 
+export const getUserEmbeddings = async (
+  inputUsername: string,
+  options?: SharedTweetRowsOptions,
+): Promise<UserEmbeddings | null> => {
+  const username = normalizeUsername(inputUsername);
+  if (!username) {
+    return null;
+  }
+
+  const cached = embeddingsCache.get(username);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = (async () => {
+    const npy = await readNpyArray(username, "reduced_embeddings.npy");
+    if (!npy) {
+      return null;
+    }
+
+    const shape = Array.isArray(npy.shape) ? npy.shape : [];
+    if (!shape.length || !Number.isFinite(shape[0]!)) {
+      return null;
+    }
+
+    const rowCount = Math.max(0, Number(shape[0]));
+    const dimension = shape.length >= 2 && Number.isFinite(shape[1]!)
+      ? Math.max(1, Number(shape[1]))
+      : 1;
+
+    if (rowCount === 0 || dimension === 0) {
+      return null;
+    }
+
+    const tweetRows = options?.tweetRows ?? (await loadTweetRows(username));
+    if (!tweetRows.length) {
+      return null;
+    }
+
+    const coordinates = projectEmbeddingsTo2D(npy.data, rowCount, dimension);
+    if (!coordinates.length) {
+      return null;
+    }
+
+    const usableLength = Math.min(tweetRows.length, coordinates.length);
+    const embeddings: UserEmbeddings["embeddings"] = [];
+
+    for (let index = 0; index < usableLength; index += 1) {
+      const row = tweetRows[index] ?? null;
+      const point = coordinates[index] ?? null;
+      if (!point) {
+        continue;
+      }
+
+      const tweetId = row?.tweetId || `tweet-${index}`;
+      const clusterId = row?.clusterId || "unassigned";
+
+      embeddings.push({
+        tweetId,
+        clusterId,
+        x: Number.isFinite(point.x) ? Number(point.x) : 0,
+        y: Number.isFinite(point.y) ? Number(point.y) : 0,
+      });
+    }
+
+    if (!embeddings.length) {
+      return null;
+    }
+
+    return {
+      embeddings,
+      originalDimensions: dimension,
+    };
+  })();
+
+  embeddingsCache.set(username, promise);
+
+  try {
+    const result = await promise;
+    if (!result) {
+      embeddingsCache.delete(username);
+    }
+    return result;
+  } catch (error) {
+    embeddingsCache.delete(username);
+    throw error;
+  }
+};
+
 export type UserDataBundle = {
   summary: UserSummary | null;
   clusters: UserClusters | null;
   threads: UserThreads | null;
+  embeddings: UserEmbeddings | null;
 };
 
 export const getUserDataBundle = async (
@@ -1648,15 +2017,17 @@ export const getUserDataBundle = async (
 
   const tweetRows = await loadTweetRows(username);
 
-  const [summary, clusters, threads] = await Promise.all([
+  const [summary, clusters, threads, embeddings] = await Promise.all([
     getUserSummary(username, { tweetRows, skipExistenceCheck: true }),
     getUserClusters(username, { tweetRows }),
     getUserThreads(username, { tweetRows }),
+    getUserEmbeddings(username, { tweetRows }),
   ]);
 
   return {
     summary,
     clusters,
     threads,
+    embeddings,
   };
 };

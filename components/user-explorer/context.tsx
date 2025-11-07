@@ -13,10 +13,12 @@ import {
 import type { ClusterInfo, UserClusters } from "@/types/cluster";
 import type { ThreadEntry, UserThreads } from "@/types/thread";
 import type { UserSummary } from "@/types/user";
+import type { UserEmbeddings } from "@/types/embedding";
 
 type SummaryCache = Map<string, UserSummary>;
 type ClusterCache = Map<string, UserClusters>;
 type ThreadCache = Map<string, UserThreads>;
+type EmbeddingsCache = Map<string, UserEmbeddings>;
 
 export type ThreadSortKey = "favorite-count" | "date" | "cluster-probability";
 export type TimelineRange = { start: string; end: string };
@@ -32,6 +34,9 @@ export type ExplorerContextValue = {
   summary: UserSummary | null;
   clustersData: UserClusters | null;
   clustersLoading: boolean;
+  embeddingsError: string | null;
+  embeddingsData: UserEmbeddings | null;
+  embeddingsLoading: boolean;
   expandLoading: boolean;
   threadsData: UserThreads | null;
   threadsLoading: boolean;
@@ -92,6 +97,9 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
   const [summary, setSummary] = useState<UserSummary | null>(null);
   const [clustersData, setClustersData] = useState<UserClusters | null>(null);
   const [clustersLoading, setClustersLoading] = useState(false);
+  const [embeddingsError, setEmbeddingsError] = useState<string | null>(null);
+  const [embeddingsData, setEmbeddingsData] = useState<UserEmbeddings | null>(null);
+  const [embeddingsLoading, setEmbeddingsLoading] = useState(false);
   const [hideLowQuality, setHideLowQuality] = useState(false);
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
   const [threadsData, setThreadsData] = useState<UserThreads | null>(null);
@@ -107,6 +115,7 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
   const summaryCacheRef = useRef<SummaryCache>(new Map());
   const clusterCacheRef = useRef<ClusterCache>(new Map());
   const threadCacheRef = useRef<ThreadCache>(new Map());
+  const embeddingsCacheRef = useRef<EmbeddingsCache>(new Map());
   const activeUserRef = useRef<string>("");
 
   useEffect(() => {
@@ -172,6 +181,9 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     setClustersData(null);
     setClustersLoading(false);
     setClustersError(null);
+    setEmbeddingsData(null);
+    setEmbeddingsLoading(false);
+    setEmbeddingsError(null);
     setThreadsData(null);
     setThreadsLoading(false);
     setThreadsError(null);
@@ -217,10 +229,13 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     setExpandLoading(false);
     setSummaryError(null);
     setClustersError(null);
+    setEmbeddingsError(null);
     setThreadsError(null);
     setSummary(null);
     setClustersData(null);
     setClustersLoading(false);
+    setEmbeddingsData(null);
+    setEmbeddingsLoading(false);
     setThreadsData(null);
     setThreadsLoading(false);
     setSelectedClusterId(null);
@@ -247,18 +262,24 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
       setExpandLoading(true);
       setSummaryError(null);
       setClustersError(null);
+      setEmbeddingsError(null);
       setThreadsError(null);
 
       const cachedSummary = summaryCacheRef.current.get(username) ?? null;
       const cachedClusters = clusterCacheRef.current.get(username) ?? null;
       const cachedThreads = threadCacheRef.current.get(username) ?? null;
-      const hasCompleteCache = Boolean(cachedSummary && cachedClusters && cachedThreads);
+      const cachedEmbeddings = embeddingsCacheRef.current.get(username) ?? null;
+      const hasCompleteCache = Boolean(
+        cachedSummary && cachedClusters && cachedThreads && cachedEmbeddings,
+      );
 
       setSummary(cachedSummary);
       setClustersData(cachedClusters);
       setThreadsData(cachedThreads);
       setClustersLoading(!cachedClusters);
       setThreadsLoading(!cachedThreads);
+      setEmbeddingsData(cachedEmbeddings);
+      setEmbeddingsLoading(!cachedEmbeddings);
 
       if (hasCompleteCache) {
         setExpandLoading(false);
@@ -277,11 +298,14 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
           setSummary(null);
           setClustersData(null);
           setThreadsData(null);
+          setEmbeddingsData(null);
           summaryCacheRef.current.delete(username);
           clusterCacheRef.current.delete(username);
           threadCacheRef.current.delete(username);
+          embeddingsCacheRef.current.delete(username);
           setSummaryError(message);
           setClustersError(message);
+          setEmbeddingsError(message);
           setThreadsError(message);
           return;
         }
@@ -302,6 +326,14 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
           setClustersData(null);
         }
 
+        if (data.embeddings) {
+          embeddingsCacheRef.current.set(username, data.embeddings);
+          setEmbeddingsData(data.embeddings);
+        } else {
+          embeddingsCacheRef.current.delete(username);
+          setEmbeddingsData(null);
+        }
+
         if (data.threads) {
           threadCacheRef.current.set(username, data.threads);
           setThreadsData(data.threads);
@@ -318,11 +350,14 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
         setSummary(null);
         setClustersData(null);
         setThreadsData(null);
+        setEmbeddingsData(null);
         summaryCacheRef.current.delete(username);
         clusterCacheRef.current.delete(username);
         threadCacheRef.current.delete(username);
+        embeddingsCacheRef.current.delete(username);
         setSummaryError(message);
         setClustersError(message);
+        setEmbeddingsError(message);
         setThreadsError(message);
       } finally {
         if (!isCurrentSelection()) {
@@ -330,6 +365,7 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
         }
         setClustersLoading(false);
         setThreadsLoading(false);
+        setEmbeddingsLoading(false);
         setExpandLoading(false);
       }
     },
@@ -559,6 +595,9 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     summary,
     clustersData,
     clustersLoading,
+    embeddingsError,
+    embeddingsData,
+    embeddingsLoading,
     expandLoading,
     threadsData,
     threadsLoading,
