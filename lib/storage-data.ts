@@ -460,7 +460,11 @@ const projectEmbeddingsTo2D = (
   }
 
   if (dimension === 1) {
-    const mean = values.reduce((acc, value) => acc + value, 0) / rowCount;
+    let total = 0;
+    for (let index = 0; index < rowCount; index += 1) {
+      total += values[index] ?? 0;
+    }
+    const mean = rowCount > 0 ? total / rowCount : 0;
     const mapped = new Array(rowCount);
     for (let index = 0; index < rowCount; index += 1) {
       mapped[index] = { x: Number(values[index] - mean), y: 0 };
