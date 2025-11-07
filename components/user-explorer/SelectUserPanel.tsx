@@ -91,6 +91,7 @@ export const SelectUserPanel = () => {
                 alt={`Avatar of ${summary.handle}`}
                 width={80}
                 height={80}
+                style={{ height: "auto" }}
                 className="h-20 w-20 object-cover"
               />
             </div>

@@ -6,9 +6,14 @@ const stripMarkdownLinks = (value?: string | null) =>
   value ? value.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1") : value ?? "";
 
 export const YearlySummariesSection = () => {
-  const { summary, clustersLoading, selectedCluster, hasAvailableClusters } = useUserExplorer();
+  const {
+    clustersLoading,
+    selectedCluster,
+    hasAvailableClusters,
+    canShowYearlySummariesSection,
+  } = useUserExplorer();
 
-  if (!summary) {
+  if (!canShowYearlySummariesSection) {
     return null;
   }
 

@@ -1932,9 +1932,8 @@ export const getUserEmbeddings = async (
     }
 
     const rowCount = Math.max(0, Number(shape[0]));
-    const dimension = shape.length >= 2 && Number.isFinite(shape[1]!)
-      ? Math.max(1, Number(shape[1]))
-      : 1;
+    const dimension =
+      shape.length >= 2 && Number.isFinite(shape[1]!) ? Math.max(1, Number(shape[1])) : 1;
 
     if (rowCount === 0 || dimension === 0) {
       return null;
@@ -1945,23 +1944,60 @@ export const getUserEmbeddings = async (
       return null;
     }
 
-    const coordinates = projectEmbeddingsTo2D(npy.data, rowCount, dimension);
+    const maxAlignedLength = Math.min(tweetRows.length, rowCount);
+    if (maxAlignedLength === 0) {
+      return null;
+    }
+
+    const keptRows: NormalizedTweetRow[] = [];
+    const keptIndices: number[] = [];
+
+    for (let index = 0; index < maxAlignedLength; index += 1) {
+      const row = tweetRows[index];
+      if (!row) {
+        continue;
+      }
+      const clusterId = row.clusterId?.trim();
+      if (!clusterId || clusterId === "-1") {
+        continue;
+      }
+      keptRows.push(row);
+      keptIndices.push(index);
+    }
+
+    if (!keptRows.length) {
+      return null;
+    }
+
+    const constructor =
+      npy.data instanceof Float32Array ? Float32Array : Float64Array;
+    const filteredValues = new constructor(keptRows.length * dimension);
+
+    for (let position = 0; position < keptIndices.length; position += 1) {
+      const sourceIndex = keptIndices[position]!;
+      const targetBase = position * dimension;
+      const sourceBase = sourceIndex * dimension;
+      for (let column = 0; column < dimension; column += 1) {
+        filteredValues[targetBase + column] = npy.data[sourceBase + column] ?? 0;
+      }
+    }
+
+    const coordinates = projectEmbeddingsTo2D(filteredValues, keptRows.length, dimension);
     if (!coordinates.length) {
       return null;
     }
 
-    const usableLength = Math.min(tweetRows.length, coordinates.length);
     const embeddings: UserEmbeddings["embeddings"] = [];
 
-    for (let index = 0; index < usableLength; index += 1) {
-      const row = tweetRows[index] ?? null;
+    for (let index = 0; index < keptRows.length; index += 1) {
+      const row = keptRows[index] ?? null;
       const point = coordinates[index] ?? null;
       if (!point) {
         continue;
       }
 
       const tweetId = row?.tweetId || `tweet-${index}`;
-      const clusterId = row?.clusterId || "unassigned";
+      const clusterId = row?.clusterId?.trim() || "unassigned";
 
       embeddings.push({
         tweetId,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { ClusterEmbeddingPoint } from "@/types/embedding";
 import { useUserExplorer } from "./context";
@@ -13,13 +13,15 @@ const MARGIN = { top: 20, right: 20, bottom: 40, left: 50 };
 
 export const ClusterScatterSection = () => {
   const {
-    summary,
     clustersLoading,
     clustersData,
     embeddingsData,
     embeddingsLoading,
     embeddingsError,
     hasAvailableClusters,
+    selectedCluster,
+    setSelectedClusterId,
+    canShowClusterScatterSection,
   } = useUserExplorer();
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -59,6 +61,34 @@ export const ClusterScatterSection = () => {
     });
   }, [embeddingsData, clusterNameMap]);
 
+  const [activeClusterId, setActiveClusterId] = useState<string | null>(null);
+  const lastContextClusterIdRef = useRef<string | null>(null);
+  const selectedClusterId = selectedCluster?.id ?? null;
+
+  useEffect(() => {
+    if (selectedClusterId !== lastContextClusterIdRef.current) {
+      lastContextClusterIdRef.current = selectedClusterId;
+      setActiveClusterId(selectedClusterId);
+    }
+  }, [selectedClusterId]);
+
+  const clearClusterSelection = useCallback(() => {
+    setActiveClusterId((current) => (current !== null ? null : current));
+  }, []);
+
+  const handleClusterActivate = useCallback(
+    (clusterId: string) => {
+      setActiveClusterId((current) => {
+        if (current === clusterId) {
+          return null;
+        }
+        return clusterId;
+      });
+      setSelectedClusterId(clusterId);
+    },
+    [setSelectedClusterId],
+  );
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
@@ -86,6 +116,27 @@ export const ClusterScatterSection = () => {
       scale.domain(clusterIds);
     }
     return scale;
+  }, [embeddings]);
+
+  const clusterSummaries = useMemo(() => {
+    if (!embeddings.length) {
+      return [];
+    }
+    const counts = new Map<string, { id: string; name: string; count: number }>();
+    for (const embedding of embeddings) {
+      const id = embedding.clusterId || "unassigned";
+      const current = counts.get(id);
+      if (current) {
+        current.count += 1;
+      } else {
+        counts.set(id, {
+          id,
+          name: embedding.clusterName || id,
+          count: 1,
+        });
+      }
+    }
+    return Array.from(counts.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [embeddings]);
 
   useEffect(() => {
@@ -158,32 +209,24 @@ export const ClusterScatterSection = () => {
       .attr("stroke", "currentColor")
       .attr("stroke-width", 1);
 
-    group
-      .append("text")
-      .attr("x", width / 2)
-      .attr("y", height + 35)
-      .attr("text-anchor", "middle")
-      .attr("class", "text-xs text-zinc-600 dark:text-zinc-400 fill-current")
-      .text("Dimension 1");
-
-    group
-      .append("text")
-      .attr("transform", "rotate(-90)")
-      .attr("x", -height / 2)
-      .attr("y", -35)
-      .attr("text-anchor", "middle")
-      .attr("class", "text-xs text-zinc-600 dark:text-zinc-400 fill-current")
-      .text("Dimension 2");
-
     const tooltip = d3
-      .select(container)
+      .select("body")
       .append("div")
       .attr(
         "class",
-        "absolute pointer-events-none opacity-0 transition-opacity duration-200 bg-black text-white dark:bg-white dark:text-zinc-900 text-xs rounded px-3 py-2 shadow-lg z-10",
+        "fixed pointer-events-none opacity-0 transition-opacity duration-200 bg-black text-white dark:bg-white dark:text-zinc-900 text-xs rounded px-3 py-2 shadow-lg z-50",
       )
       .style("left", "0px")
       .style("top", "0px");
+
+    group
+      .append("rect")
+      .attr("width", width)
+      .attr("height", height)
+      .attr("fill", "transparent")
+      .on("click", () => {
+        clearClusterSelection();
+      });
 
     const pointsGroup = group.append("g").attr("clip-path", `url(#${clipId})`);
 
@@ -196,44 +239,50 @@ export const ClusterScatterSection = () => {
       .attr("cy", (datum) => yScale(datum.y))
       .attr("r", 3)
       .attr("fill", (datum) => colorScale(datum.clusterId) ?? "#7c3aed")
-      .attr("opacity", 0.6)
+      .attr("opacity", (datum) => {
+        if (activeClusterId && datum.clusterId !== activeClusterId) {
+          return 0.15;
+        }
+        return 0.7;
+      })
       .attr("class", "transition-opacity hover:opacity-100 cursor-pointer")
       .on("mouseover", function (event, datum) {
+        event.stopPropagation();
         d3.select(this).attr("opacity", 1).attr("r", 5);
-        const trimmedTweetId = datum.tweetId ? datum.tweetId.slice(0, 18) : "";
         tooltip
           .style("opacity", 1)
-          .html(
-            `<strong>${datum.clusterName}</strong><br/>Tweet: ${
-              trimmedTweetId || "Unknown"
-            }${datum.tweetId.length > 18 ? "…" : ""}`,
-          );
+          .html(`<strong>${datum.clusterName}</strong>`);
       })
       .on("mousemove", function (event) {
-        const [x, y] = d3.pointer(event, container);
-        tooltip.style("left", `${x + 10}px`).style("top", `${y - 10}px`);
+        const pointerEvent = event as PointerEvent;
+        tooltip
+          .style("left", `${pointerEvent.clientX + 10}px`)
+          .style("top", `${pointerEvent.clientY - 10}px`);
       })
-      .on("mouseout", function () {
-        d3.select(this).attr("opacity", 0.6).attr("r", 3);
+      .on("mouseout", function (event, datum) {
+        if (activeClusterId && datum.clusterId !== activeClusterId) {
+          d3.select(this).attr("opacity", 0.15).attr("r", 3);
+        } else {
+          d3.select(this).attr("opacity", 0.7).attr("r", 3);
+        }
         tooltip.style("opacity", 0);
+      })
+      .on("click", function (event, datum) {
+        event.stopPropagation();
+        handleClusterActivate(datum.clusterId);
       });
 
     return () => {
       tooltip.remove();
     };
-  }, [embeddings, colorScale, resizeTrigger]);
+  }, [embeddings, colorScale, resizeTrigger, activeClusterId, handleClusterActivate, clearClusterSelection]);
 
-  if (!summary && !clustersLoading && !embeddingsLoading) {
+  if (!canShowClusterScatterSection) {
     return null;
   }
 
   const showLoading = embeddingsLoading || (clustersLoading && !hasAvailableClusters);
   const hasData = embeddings.length > 0 && hasAvailableClusters;
-  const projectionSource =
-    embeddingsData && embeddingsData.originalDimensions > 1
-      ? `${embeddingsData.originalDimensions}-dimensional embedding`
-      : "high-dimensional embedding";
-
   let body;
 
   if (showLoading) {
@@ -282,13 +331,52 @@ export const ClusterScatterSection = () => {
     );
   } else {
     body = (
-      <div
-        ref={containerRef}
-        className="relative rounded-lg border border-zinc-200 bg-zinc-50 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60"
-        style={{ height: "60vh", width: "100%" }}
-      >
-        <svg ref={svgRef} width="100%" height="100%" className="overflow-hidden" />
-      </div>
+      <>
+        <div
+          ref={containerRef}
+          className="relative rounded-lg border border-zinc-200 bg-zinc-50 transition-colors dark:border-zinc-700 dark:bg-zinc-900/60"
+          style={{ height: "60vh", width: "100%" }}
+        >
+          <svg ref={svgRef} width="100%" height="100%" className="overflow-hidden" />
+        </div>
+        {clusterSummaries.length > 0 && (
+          <div className="grid gap-3 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+            {clusterSummaries.map((cluster) => {
+              const color = colorScale(cluster.id) ?? "#7c3aed";
+              const isActive = activeClusterId === cluster.id;
+              const isDimmed = Boolean(activeClusterId && cluster.id !== activeClusterId);
+              return (
+                <button
+                  type="button"
+                  key={cluster.id}
+                  onClick={() => handleClusterActivate(cluster.id)}
+                  className={`relative flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900/60 dark:focus-visible:ring-zinc-300 ${isDimmed ? "opacity-50" : ""}`}
+                  aria-pressed={isActive}
+                  style={
+                    isActive
+                      ? {
+                          borderColor: color,
+                          boxShadow: `0 0 0 1px ${color}`,
+                        }
+                      : undefined
+                  }
+                >
+                  <span
+                    className="absolute left-1 top-1 bottom-1 w-[6px] rounded-full"
+                    style={{ backgroundColor: color }}
+                    aria-hidden="true"
+                  />
+                  <div className="ml-3 flex flex-col">
+                    <span className="text-xs font-medium text-zinc-700 transition-colors dark:text-zinc-200">
+                      {cluster.name}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </>
     );
   }
 
@@ -298,10 +386,6 @@ export const ClusterScatterSection = () => {
         <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
           Cluster Distribution
         </h2>
-        <p className="mt-2 text-sm text-zinc-600 transition-colors dark:text-zinc-400">
-          Tweets are projected from the original {projectionSource} into a 2D scatter plot using a
-          linear map so that clusters spread across the available space.
-        </p>
       </div>
       {body}
     </section>

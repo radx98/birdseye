@@ -106,6 +106,7 @@ export const ClustersSection = () => {
     selectedCluster,
     setSelectedClusterId,
     hasAvailableClusters,
+    canShowClustersSection,
   } = useUserExplorer();
 
   const [sortState, setSortState] = useState<SortState>({ key: "medianDate", direction: "desc" });
@@ -235,7 +236,7 @@ const renderSortIcon = (key: ClusterSortKey) => {
   );
 };
 
-  if (!summary && !clustersLoading) {
+  if (!canShowClustersSection) {
     return null;
   }
 

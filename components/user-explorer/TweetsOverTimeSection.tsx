@@ -37,7 +37,13 @@ type TimelineDatum = {
 };
 
 export const TweetsOverTimeSection = () => {
-  const { summary, expandLoading, timelineRange, setTimelineRange } = useUserExplorer();
+  const {
+    summary,
+    expandLoading,
+    timelineRange,
+    setTimelineRange,
+    canShowTweetsOverTimeSection,
+  } = useUserExplorer();
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -884,7 +890,7 @@ export const TweetsOverTimeSection = () => {
     }
   }, [timelineRange, indexByKeyAll, setTimelineRange]);
 
-  if (!summary) {
+  if (!canShowTweetsOverTimeSection) {
     return null;
   }
 
@@ -1113,6 +1119,10 @@ export const TweetsOverTimeSection = () => {
         ) : null}
       </div>
     );
+  }
+
+  if (!canShowTweetsOverTimeSection) {
+    return null;
   }
 
   return (
