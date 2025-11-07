@@ -391,10 +391,6 @@ export const ClusterScatterSection = () => {
         <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
           Cluster Distribution
         </h2>
-        <p className="mt-2 text-sm text-zinc-600 transition-colors dark:text-zinc-400">
-          Tweets are projected from the original {projectionSource} into a 2D scatter plot using a
-          linear map so that clusters spread across the available space.
-        </p>
       </div>
       {body}
     </section>
