@@ -9,6 +9,7 @@ import {
   TweetsOverTimeSection,
   OntologySection,
   ThreadsSection,
+  StatusPanel,
 } from "@/components/user-explorer";
 import ThemeSwitch from "@/components/theme-switch";
 import { listUsers } from "@/lib/storage-data";
@@ -119,6 +120,7 @@ export default async function Home() {
 
         <UserExplorerProvider users={users}>
           <>
+            <StatusPanel />
             <section className="flex flex-col gap-6 rounded-lg bg-white p-4 sm:p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
               <div>
                 <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
@@ -141,16 +143,16 @@ export default async function Home() {
           </>
         </UserExplorerProvider>
 
-        <footer className="mt-12 flex flex-col items-center justify-between gap-6 border-t border-zinc-200 pt-8 text-sm text-zinc-600 transition-colors sm:flex-row dark:border-zinc-800 dark:text-zinc-400">
+        <footer className="mt-12 flex flex-row flex-wrap items-center justify-between gap-6 border-t border-zinc-200 px-4 pt-8 text-sm text-zinc-600 transition-colors sm:px-8 dark:border-zinc-800 dark:text-zinc-400">
           <a
             href="https://www.community-archive.org/"
-            className="ml-4 font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-400 transition-colors dark:text-zinc-100 dark:decoration-zinc-600 dark:hover:decoration-zinc-500"
+            className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-400 transition-colors dark:text-zinc-100 dark:decoration-zinc-600 dark:hover:decoration-zinc-500"
           >
             Community Archive
           </a>
           <a
             href="https://discord.gg/RArTGrUawX"
-            className="mr-4 inline-flex"
+            className="inline-flex"
             aria-label="Join the Birdseye community on Discord"
           >
             <Image

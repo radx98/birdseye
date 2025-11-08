@@ -6,3 +6,4 @@ export { YearlySummariesSection } from "./YearlySummariesSection";
 export { TweetsOverTimeSection } from "./TweetsOverTimeSection";
 export { OntologySection } from "./OntologySection";
 export { ThreadsSection } from "./ThreadsSection";
+export { StatusPanel } from "./StatusPanel";
