@@ -25,6 +25,7 @@ export const SelectUserPanel = () => {
     summary,
     expandLoading,
     handleSelection,
+    singleUserMode,
   } = useUserExplorer();
 
   const onSelectionChange = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -33,32 +34,35 @@ export const SelectUserPanel = () => {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex w-full flex-col gap-4">
-        <div className="relative flex flex-1 flex-col">
-          <select
-            value={selectedUser}
-            onChange={onSelectionChange}
-            disabled={!hasUsers || listLoading}
-            className="w-full appearance-none rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 pr-12 text-base text-zinc-900 transition-colors focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500 dark:focus:ring-zinc-600"
-          >
-            <option value="">{listLoading ? "Loading..." : hasUsers ? "Select a user" : "No users available"}</option>
-            {selectOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center">
-            <Image
-              src="/dropdown.png"
-              alt=""
-              width={16}
-              height={16}
-              className="h-4 w-4 opacity-70 filter dark:invert dark:brightness-125 dark:opacity-90"
-            />
-          </span>
+      {/* Only show dropdown in multi-user (admin) mode */}
+      {!singleUserMode && (
+        <div className="flex w-full flex-col gap-4">
+          <div className="relative flex flex-1 flex-col">
+            <select
+              value={selectedUser}
+              onChange={onSelectionChange}
+              disabled={!hasUsers || listLoading}
+              className="w-full appearance-none rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 pr-12 text-base text-zinc-900 transition-colors focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500 dark:focus:ring-zinc-600"
+            >
+              <option value="">{listLoading ? "Loading..." : hasUsers ? "Select a user" : "No users available"}</option>
+              {selectOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center">
+              <Image
+                src="/dropdown.png"
+                alt=""
+                width={16}
+                height={16}
+                className="h-4 w-4 opacity-70 filter dark:invert dark:brightness-125 dark:opacity-90"
+              />
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {expandLoading && selectedUser && !summary && (
         <p className="text-sm text-zinc-600 dark:text-zinc-400">Loading...</p>

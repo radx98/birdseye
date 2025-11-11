@@ -69,6 +69,7 @@ export type ExplorerContextValue = {
   canShowOntologySection: boolean;
   canShowTweetsOverTimeSection: boolean;
   canShowThreadsSection: boolean;
+  singleUserMode: boolean;
 };
 
 const UserExplorerContext = createContext<ExplorerContextValue | null>(null);
@@ -90,9 +91,11 @@ const getThreadTopFavoriteCount = (thread: ThreadEntry): number => {
 type UserExplorerProviderProps = {
   users: string[];
   children: ReactNode;
+  singleUserMode?: boolean;
+  userTwitterId?: string | null;
 };
 
-export const UserExplorerProvider = ({ users, children }: UserExplorerProviderProps) => {
+export const UserExplorerProvider = ({ users, children, singleUserMode = false, userTwitterId }: UserExplorerProviderProps) => {
   const [options, setOptions] = useState(() => users);
   const [selectedUser, setSelectedUser] = useState<string>("");
   const [expandLoading, setExpandLoading] = useState(false);
@@ -176,6 +179,63 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
   useEffect(() => {
     activeUserRef.current = selectedUser;
   }, [selectedUser]);
+
+  // Auto-load username for single user mode based on Twitter ID
+  useEffect(() => {
+    if (!singleUserMode) {
+      return;
+    }
+
+    // If no Twitter ID, show error
+    if (!userTwitterId) {
+      setListError("Unable to retrieve your Twitter account ID. Please try signing in again.");
+      setListLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const findUsername = async () => {
+      console.log("Looking up username for Twitter ID:", userTwitterId);
+      setListLoading(true);
+      setListError(null);
+      try {
+        const res = await fetch("/api/auth/find-username", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ twitterId: userTwitterId }),
+        });
+        const data = await res.json();
+        console.log("Username lookup response:", { ok: res.ok, data });
+
+        if (!cancelled) {
+          if (res.ok && data.username) {
+            console.log("Found username:", data.username);
+            setSelectedUser(data.username);
+            setOptions([data.username]);
+          } else {
+            console.warn("Username not found for Twitter ID:", userTwitterId);
+            setListError("Your Twitter account data is not available yet. Please check back later.");
+          }
+        }
+      } catch (err) {
+        console.error("Error looking up username:", err);
+        if (!cancelled) {
+          setListError(err instanceof Error ? err.message : "Failed to load your data.");
+        }
+      } finally {
+        if (!cancelled) {
+          setListLoading(false);
+        }
+      }
+    };
+
+    void findUsername();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [singleUserMode, userTwitterId]);
 
   useEffect(() => {
     if (selectedUser) {
@@ -646,6 +706,7 @@ export const UserExplorerProvider = ({ users, children }: UserExplorerProviderPr
     canShowOntologySection,
     canShowTweetsOverTimeSection,
     canShowThreadsSection,
+    singleUserMode,
   };
 
   return <UserExplorerContext.Provider value={contextValue}>{children}</UserExplorerContext.Provider>;
