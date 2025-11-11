@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { authClient } from "@/lib/auth-client";
+import styles from "./RainbowAnimation.module.css";
 
 const EXAMPLE_IMAGES = [
   "/example1.png",
@@ -13,6 +14,7 @@ const EXAMPLE_IMAGES = [
 
 export function SignInSection() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -20,6 +22,24 @@ export function SignInSection() {
     }, 3000); // Change image every 3 seconds
 
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    // Detect dark mode
+    const checkDarkMode = () => {
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    };
+
+    checkDarkMode();
+
+    // Watch for theme changes
+    const observer = new MutationObserver(checkDarkMode);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+
+    return () => observer.disconnect();
   }, []);
 
   const handleSignIn = async () => {
@@ -30,24 +50,32 @@ export function SignInSection() {
   };
 
   return (
-    <section className="mb-16">
-      <h2 className="text-3xl font-bold mb-8">Sign In</h2>
-      <div className="grid md:grid-cols-2 gap-8 items-center">
+    <section className="relative flex flex-col gap-5 rounded-lg bg-white p-4 sm:p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700 overflow-hidden">
+      {/* Rainbow animation background */}
+      <div className={`${styles.animationContainer} ${isDarkMode ? styles.dark : styles.light}`}>
+        {Array.from({ length: 25 }).map((_, i) => (
+          <div key={i} className={styles.rainbow} />
+        ))}
+        <div className={styles.fadeBottom} />
+        <div className={styles.fadeLeft} />
+      </div>
+
+      <div className="relative z-10 grid md:grid-cols-3 gap-8 items-center">
         {/* Left side: Caption and Button */}
-        <div className="flex flex-col justify-center space-y-6">
-          <p className="text-xl text-gray-700">
-            Sign in to get your Twitter history analysis!
-          </p>
+        <div className="flex flex-col justify-center items-center space-y-10 md:col-span-2">
+          <h2 className="font-slab text-xl font-semibold text-zinc-800 text-center transition-colors dark:text-zinc-100">
+            Sign in to get your tweet history analysis!
+          </h2>
           <button
             onClick={handleSignIn}
-            className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-8 rounded-lg transition-colors text-lg w-fit"
+            className="cursor-pointer rounded-lg border-2 border-zinc-900 bg-zinc-900 px-8 py-3 text-base font-semibold text-white transition-colors hover:bg-zinc-800 hover:border-zinc-800 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 dark:hover:border-zinc-200"
           >
-            Sign In
+            Sign In with Twitter/X
           </button>
         </div>
 
         {/* Right side: Slideshow */}
-        <div className="relative w-full aspect-video bg-gray-100 rounded-lg overflow-hidden">
+        <div className="relative w-full aspect-square bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 transition-colors dark:bg-zinc-800 dark:border-zinc-700">
           {EXAMPLE_IMAGES.map((src, index) => (
             <div
               key={src}
@@ -72,7 +100,7 @@ export function SignInSection() {
                 key={index}
                 onClick={() => setCurrentImageIndex(index)}
                 className={`w-2 h-2 rounded-full transition-colors ${
-                  index === currentImageIndex ? "bg-blue-500" : "bg-gray-300"
+                  index === currentImageIndex ? "bg-blue-500 dark:bg-blue-400" : "bg-zinc-300 dark:bg-zinc-600"
                 }`}
                 aria-label={`Go to slide ${index + 1}`}
               />

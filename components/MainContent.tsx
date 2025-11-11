@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSession } from "@/lib/auth-client";
+import { useSession, authClient } from "@/lib/auth-client";
 import { SignInSection } from "@/components/auth/SignInSection";
 import { GetStartedSection } from "@/components/auth/GetStartedSection";
 import {
@@ -25,6 +25,11 @@ export function MainContent({ users }: MainContentProps) {
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userTwitterId, setUserTwitterId] = useState<string | null>(null);
+  const [twitterUsername, setTwitterUsername] = useState<string | null>(null);
+
+  const handleLogout = async () => {
+    await authClient.signOut();
+  };
 
   useEffect(() => {
     if (session?.user) {
@@ -43,6 +48,18 @@ export function MainContent({ users }: MainContentProps) {
 
           if (!data.twitterId) {
             console.warn("No Twitter ID found in session - user may not have linked Twitter account");
+          } else {
+            // Fetch the Twitter username from the Twitter ID
+            const usernameResponse = await fetch("/api/auth/find-username", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ twitterId: data.twitterId }),
+            });
+
+            if (usernameResponse.ok) {
+              const usernameData = await usernameResponse.json();
+              setTwitterUsername(usernameData.username);
+            }
           }
         } catch (error) {
           console.error("Failed to check admin status:", error);
@@ -53,6 +70,7 @@ export function MainContent({ users }: MainContentProps) {
       // Reset state when logged out
       setIsAdmin(false);
       setUserTwitterId(null);
+      setTwitterUsername(null);
       setShowAnalysis(false);
     }
   }, [session]);
@@ -79,9 +97,17 @@ export function MainContent({ users }: MainContentProps) {
           <StatusPanel />
           <section className="flex flex-col gap-6 rounded-lg bg-white p-4 sm:p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
             <div>
-              <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
-                Select a User
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
+                  Select a User
+                </h2>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm text-zinc-600 hover:text-zinc-800 transition-colors dark:text-zinc-400 dark:hover:text-zinc-200"
+                >
+                  Log out
+                </button>
+              </div>
               <p className="mt-2 text-sm text-zinc-600 transition-colors dark:text-zinc-400">
                 Choose a user to explore. As soon as you pick someone, Birdseye loads clusters, timelines, and
                 threads tailored to that account.
@@ -103,7 +129,7 @@ export function MainContent({ users }: MainContentProps) {
 
   // Authenticated but not admin - show get started or user-specific data
   if (!showAnalysis) {
-    return <GetStartedSection onGetAnalysis={() => setShowAnalysis(true)} />;
+    return <GetStartedSection onGetAnalysis={() => setShowAnalysis(true)} twitterUsername={twitterUsername} />;
   }
 
   // User has clicked "Get the Analysis" - show their data
@@ -117,13 +143,16 @@ export function MainContent({ users }: MainContentProps) {
 
         {/* User info section - no dropdown, just show current user */}
         <section className="flex flex-col gap-6 rounded-lg bg-white p-4 sm:p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
-          <div>
+          <div className="flex items-center justify-between">
             <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
-              Your Twitter Analysis
+              User
             </h2>
-            <p className="mt-2 text-sm text-zinc-600 transition-colors dark:text-zinc-400">
-              Explore your Twitter history analysis below.
-            </p>
+            <button
+              onClick={handleLogout}
+              className="text-sm text-zinc-600 hover:text-zinc-800 transition-colors dark:text-zinc-400 dark:hover:text-zinc-200"
+            >
+              Log out
+            </button>
           </div>
           <SelectUserPanel />
         </section>
