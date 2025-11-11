@@ -20,7 +20,9 @@ const getAuthBaseURL = () => {
 export const auth = betterAuth({
   database: new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: false, // Disable SSL for development
+    ssl: process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false } // Enable SSL for production (Supabase requires it)
+      : false, // Disable SSL for local development
   }),
   emailAndPassword: {
     enabled: false, // Disable email/password auth
