@@ -19,6 +19,12 @@ export async function POST(request: Request) {
     for (const username of users) {
       try {
         const summary = await getUserSummary(username);
+
+        if (!summary) {
+          console.log(`  Skipping @${username}: no summary data`);
+          continue;
+        }
+
         console.log(`  Checking @${username}: accountId = "${summary.accountId}"`);
 
         // Check if this user's account ID matches the Twitter ID
