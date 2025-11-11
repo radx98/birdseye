@@ -25,6 +25,7 @@ export function MainContent({ users }: MainContentProps) {
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userTwitterId, setUserTwitterId] = useState<string | null>(null);
+  const [twitterUsername, setTwitterUsername] = useState<string | null>(null);
 
   useEffect(() => {
     if (session?.user) {
@@ -43,6 +44,18 @@ export function MainContent({ users }: MainContentProps) {
 
           if (!data.twitterId) {
             console.warn("No Twitter ID found in session - user may not have linked Twitter account");
+          } else {
+            // Fetch the Twitter username from the Twitter ID
+            const usernameResponse = await fetch("/api/auth/find-username", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ twitterId: data.twitterId }),
+            });
+
+            if (usernameResponse.ok) {
+              const usernameData = await usernameResponse.json();
+              setTwitterUsername(usernameData.username);
+            }
           }
         } catch (error) {
           console.error("Failed to check admin status:", error);
@@ -53,6 +66,7 @@ export function MainContent({ users }: MainContentProps) {
       // Reset state when logged out
       setIsAdmin(false);
       setUserTwitterId(null);
+      setTwitterUsername(null);
       setShowAnalysis(false);
     }
   }, [session]);
@@ -103,7 +117,7 @@ export function MainContent({ users }: MainContentProps) {
 
   // Authenticated but not admin - show get started or user-specific data
   if (!showAnalysis) {
-    return <GetStartedSection onGetAnalysis={() => setShowAnalysis(true)} />;
+    return <GetStartedSection onGetAnalysis={() => setShowAnalysis(true)} twitterUsername={twitterUsername} />;
   }
 
   // User has clicked "Get the Analysis" - show their data
