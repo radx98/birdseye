@@ -15,11 +15,14 @@ const EXAMPLE_IMAGES = [
 interface GetStartedSectionProps {
   onGetAnalysis: () => void;
   twitterUsername?: string | null;
+  accountId?: string | null;
 }
 
-export function GetStartedSection({ onGetAnalysis, twitterUsername }: GetStartedSectionProps) {
+export function GetStartedSection({ onGetAnalysis, twitterUsername, accountId }: GetStartedSectionProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [existsInCA, setExistsInCA] = useState<boolean | null>(null);
+  const [checkingCA, setCheckingCA] = useState(true);
 
   const handleLogout = async () => {
     await authClient.signOut();
@@ -32,6 +35,39 @@ export function GetStartedSection({ onGetAnalysis, twitterUsername }: GetStarted
 
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    // Check if user exists in Community Archive
+    const checkCommunityArchive = async () => {
+      if (!accountId) {
+        setCheckingCA(false);
+        setExistsInCA(false);
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/auth/check-community-archive", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountId }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setExistsInCA(data.exists);
+        } else {
+          setExistsInCA(false);
+        }
+      } catch (error) {
+        console.error("Failed to check Community Archive:", error);
+        setExistsInCA(false);
+      } finally {
+        setCheckingCA(false);
+      }
+    };
+
+    void checkCommunityArchive();
+  }, [accountId]);
 
   useEffect(() => {
     // Detect dark mode
@@ -65,30 +101,105 @@ export function GetStartedSection({ onGetAnalysis, twitterUsername }: GetStarted
       <div className="relative z-10 grid md:grid-cols-3 gap-8 items-center">
         {/* Left side: Caption and Button */}
         <div className="flex flex-col justify-center items-center space-y-10 md:col-span-2">
-          <div className="flex flex-col items-center space-y-4">
-            {twitterUsername && (
-              <h1 className="font-slab text-2xl font-bold text-zinc-800 text-center transition-colors dark:text-zinc-100">
-                Hi, @{twitterUsername}!
-              </h1>
-            )}
-            <h2 className="font-slab text-xl font-semibold text-zinc-800 text-center transition-colors dark:text-zinc-100">
-              Get your tweet history analysis!
-            </h2>
-          </div>
-          <div className="flex flex-col items-center space-y-3">
-            <button
-              onClick={onGetAnalysis}
-              className="cursor-pointer rounded-lg border-2 border-zinc-900 bg-zinc-900 px-8 py-3 text-base font-semibold text-white transition-colors hover:bg-zinc-800 hover:border-zinc-800 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 dark:hover:border-zinc-200"
-            >
-              Get the Analysis
-            </button>
-            <button
-              onClick={handleLogout}
-              className="text-sm text-zinc-600 hover:text-zinc-800 transition-colors dark:text-zinc-400 dark:hover:text-zinc-200"
-            >
-              Log out
-            </button>
-          </div>
+          {checkingCA ? (
+            // Loading state
+            <div className="flex flex-col items-center space-y-4">
+              {twitterUsername && (
+                <h1 className="font-slab text-2xl font-bold text-zinc-800 text-center transition-colors dark:text-zinc-100">
+                  Hi, @{twitterUsername}!
+                </h1>
+              )}
+              <p className="text-base text-zinc-600 text-center transition-colors dark:text-zinc-400">
+                Checking your data...
+              </p>
+            </div>
+          ) : existsInCA ? (
+            // User exists in Community Archive
+            <>
+              <div className="flex flex-col items-center space-y-4">
+                {twitterUsername && (
+                  <h1 className="font-slab text-2xl font-bold text-zinc-800 text-center transition-colors dark:text-zinc-100">
+                    Hi, @{twitterUsername}!
+                  </h1>
+                )}
+                <p className="text-base text-zinc-700 text-center transition-colors dark:text-zinc-300">
+                  Community Archive has your data. If you want to update it with the latest version{" "}
+                  <a
+                    href="https://x.com/settings/download_your_data"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-400 transition-colors dark:text-zinc-100 dark:decoration-zinc-600 dark:hover:decoration-zinc-500"
+                  >
+                    export your data from Twitter/X
+                  </a>{" "}
+                  and upload it to{" "}
+                  <a
+                    href="https://www.community-archive.org/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-400 transition-colors dark:text-zinc-100 dark:decoration-zinc-600 dark:hover:decoration-zinc-500"
+                  >
+                    Community Archive
+                  </a>
+                  . Or proceed with the current version:
+                </p>
+              </div>
+              <div className="flex flex-col items-center space-y-3">
+                <button
+                  onClick={onGetAnalysis}
+                  className="cursor-pointer rounded-lg border-2 border-zinc-900 bg-zinc-900 px-8 py-3 text-base font-semibold text-white transition-colors hover:bg-zinc-800 hover:border-zinc-800 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 dark:hover:border-zinc-200"
+                >
+                  Get the Analysis
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="cursor-pointer text-sm text-zinc-600 hover:text-zinc-800 transition-colors dark:text-zinc-400 dark:hover:text-zinc-200"
+                >
+                  Log out
+                </button>
+              </div>
+            </>
+          ) : (
+            // User does not exist in Community Archive
+            <>
+              <div className="flex flex-col items-center space-y-4">
+                {twitterUsername && (
+                  <h1 className="font-slab text-2xl font-bold text-zinc-800 text-center transition-colors dark:text-zinc-100">
+                    Hi, @{twitterUsername}!
+                  </h1>
+                )}
+                <p className="text-base text-zinc-700 text-center transition-colors dark:text-zinc-300">
+                  It seems like we don&apos;t have your data. To get your tweet history analysis{" "}
+                  <a
+                    href="https://x.com/settings/download_your_data"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-400 transition-colors dark:text-zinc-100 dark:decoration-zinc-600 dark:hover:decoration-zinc-500"
+                  >
+                    export your data from Twitter/X
+                  </a>{" "}
+                  and upload it to{" "}
+                  <a
+                    href="https://www.community-archive.org/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-400 transition-colors dark:text-zinc-100 dark:decoration-zinc-600 dark:hover:decoration-zinc-500"
+                  >
+                    Community Archive
+                  </a>
+                  .
+                </p>
+              </div>
+              <div className="flex flex-col items-center space-y-3">
+                <button
+                  onClick={handleLogout}
+                  className="cursor-pointer text-sm text-zinc-600 hover:text-zinc-800 transition-colors dark:text-zinc-400 dark:hover:text-zinc-200"
+                >
+                  Log out
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right side: Slideshow */}
