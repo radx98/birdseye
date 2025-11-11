@@ -28,7 +28,7 @@ export async function POST(request: Request) {
 
     const response = await fetch(url.toString(), {
       headers: {
-        apikey: SUPABASE_ANON_KEY,
+        apikey: SUPABASE_ANON_KEY as string,
         Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         Accept: "application/json",
       },
