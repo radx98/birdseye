@@ -87,6 +87,7 @@ export function SignInSection() {
                 src={src}
                 alt={`Example ${index + 1}`}
                 fill
+                sizes="(min-width: 768px) 33vw, 100vw"
                 className="object-contain"
                 priority={index === 0}
               />
