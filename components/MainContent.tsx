@@ -103,7 +103,7 @@ export function MainContent({ users }: MainContentProps) {
                 </h2>
                 <button
                   onClick={handleLogout}
-                  className="text-sm text-zinc-600 hover:text-zinc-800 transition-colors dark:text-zinc-400 dark:hover:text-zinc-200"
+                  className="cursor-pointer text-sm text-zinc-600 hover:text-zinc-800 transition-colors dark:text-zinc-400 dark:hover:text-zinc-200"
                 >
                   Log out
                 </button>
@@ -129,7 +129,7 @@ export function MainContent({ users }: MainContentProps) {
 
   // Authenticated but not admin - show get started or user-specific data
   if (!showAnalysis) {
-    return <GetStartedSection onGetAnalysis={() => setShowAnalysis(true)} twitterUsername={twitterUsername} />;
+    return <GetStartedSection onGetAnalysis={() => setShowAnalysis(true)} twitterUsername={twitterUsername} accountId={userTwitterId} />;
   }
 
   // User has clicked "Get the Analysis" - show their data
@@ -149,7 +149,7 @@ export function MainContent({ users }: MainContentProps) {
             </h2>
             <button
               onClick={handleLogout}
-              className="text-sm text-zinc-600 hover:text-zinc-800 transition-colors dark:text-zinc-400 dark:hover:text-zinc-200"
+              className="cursor-pointer text-sm text-zinc-600 hover:text-zinc-800 transition-colors dark:text-zinc-400 dark:hover:text-zinc-200"
             >
               Log out
             </button>
