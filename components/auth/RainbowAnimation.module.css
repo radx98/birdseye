@@ -1,0 +1,84 @@
+/* Rainbow sliding animation */
+.animationContainer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: 0.5rem; /* rounded-lg */
+}
+
+.rainbow {
+  height: 100%;
+  width: 0;
+  top: 0;
+  position: absolute;
+  transform: rotate(10deg);
+  transform-origin: top right;
+}
+
+/* Generate 25 rainbow elements with staggered animations - 12x slower */
+.rainbow:nth-child(1) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(232 121 249), 0 0 50px 25px rgb(96 165 250), 50px 0 50px 25px rgb(94 234 212), 130px 0 80px 40px var(--fade-color); animation: slide 518.4s linear infinite; animation-delay: -21.6s; }
+.rainbow:nth-child(2) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(96 165 250), 0 0 50px 25px rgb(94 234 212), 50px 0 50px 25px rgb(232 121 249), 130px 0 80px 40px var(--fade-color); animation: slide 496.8s linear infinite; animation-delay: -43.2s; }
+.rainbow:nth-child(3) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(94 234 212), 0 0 50px 25px rgb(232 121 249), 50px 0 50px 25px rgb(96 165 250), 130px 0 80px 40px var(--fade-color); animation: slide 475.2s linear infinite; animation-delay: -64.8s; }
+.rainbow:nth-child(4) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(94 234 212), 0 0 50px 25px rgb(96 165 250), 50px 0 50px 25px rgb(232 121 249), 130px 0 80px 40px var(--fade-color); animation: slide 453.6s linear infinite; animation-delay: -86.4s; }
+.rainbow:nth-child(5) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(96 165 250), 0 0 50px 25px rgb(94 234 212), 50px 0 50px 25px rgb(232 121 249), 130px 0 80px 40px var(--fade-color); animation: slide 432s linear infinite; animation-delay: -108s; }
+.rainbow:nth-child(6) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(96 165 250), 0 0 50px 25px rgb(232 121 249), 50px 0 50px 25px rgb(94 234 212), 130px 0 80px 40px var(--fade-color); animation: slide 410.4s linear infinite; animation-delay: -129.6s; }
+.rainbow:nth-child(7) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(232 121 249), 0 0 50px 25px rgb(94 234 212), 50px 0 50px 25px rgb(96 165 250), 130px 0 80px 40px var(--fade-color); animation: slide 388.8s linear infinite; animation-delay: -151.2s; }
+.rainbow:nth-child(8) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(232 121 249), 0 0 50px 25px rgb(96 165 250), 50px 0 50px 25px rgb(94 234 212), 130px 0 80px 40px var(--fade-color); animation: slide 367.2s linear infinite; animation-delay: -172.8s; }
+.rainbow:nth-child(9) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(94 234 212), 0 0 50px 25px rgb(96 165 250), 50px 0 50px 25px rgb(232 121 249), 130px 0 80px 40px var(--fade-color); animation: slide 345.6s linear infinite; animation-delay: -194.4s; }
+.rainbow:nth-child(10) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(96 165 250), 0 0 50px 25px rgb(232 121 249), 50px 0 50px 25px rgb(94 234 212), 130px 0 80px 40px var(--fade-color); animation: slide 324s linear infinite; animation-delay: -216s; }
+.rainbow:nth-child(11) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(94 234 212), 0 0 50px 25px rgb(232 121 249), 50px 0 50px 25px rgb(96 165 250), 130px 0 80px 40px var(--fade-color); animation: slide 302.4s linear infinite; animation-delay: -237.6s; }
+.rainbow:nth-child(12) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(232 121 249), 0 0 50px 25px rgb(96 165 250), 50px 0 50px 25px rgb(94 234 212), 130px 0 80px 40px var(--fade-color); animation: slide 280.8s linear infinite; animation-delay: -259.2s; }
+.rainbow:nth-child(13) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(96 165 250), 0 0 50px 25px rgb(94 234 212), 50px 0 50px 25px rgb(232 121 249), 130px 0 80px 40px var(--fade-color); animation: slide 259.2s linear infinite; animation-delay: -280.8s; }
+.rainbow:nth-child(14) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(94 234 212), 0 0 50px 25px rgb(96 165 250), 50px 0 50px 25px rgb(232 121 249), 130px 0 80px 40px var(--fade-color); animation: slide 237.6s linear infinite; animation-delay: -302.4s; }
+.rainbow:nth-child(15) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(232 121 249), 0 0 50px 25px rgb(94 234 212), 50px 0 50px 25px rgb(96 165 250), 130px 0 80px 40px var(--fade-color); animation: slide 216s linear infinite; animation-delay: -324s; }
+.rainbow:nth-child(16) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(96 165 250), 0 0 50px 25px rgb(232 121 249), 50px 0 50px 25px rgb(94 234 212), 130px 0 80px 40px var(--fade-color); animation: slide 194.4s linear infinite; animation-delay: -345.6s; }
+.rainbow:nth-child(17) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(94 234 212), 0 0 50px 25px rgb(232 121 249), 50px 0 50px 25px rgb(96 165 250), 130px 0 80px 40px var(--fade-color); animation: slide 172.8s linear infinite; animation-delay: -367.2s; }
+.rainbow:nth-child(18) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(232 121 249), 0 0 50px 25px rgb(96 165 250), 50px 0 50px 25px rgb(94 234 212), 130px 0 80px 40px var(--fade-color); animation: slide 151.2s linear infinite; animation-delay: -388.8s; }
+.rainbow:nth-child(19) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(96 165 250), 0 0 50px 25px rgb(94 234 212), 50px 0 50px 25px rgb(232 121 249), 130px 0 80px 40px var(--fade-color); animation: slide 129.6s linear infinite; animation-delay: -410.4s; }
+.rainbow:nth-child(20) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(94 234 212), 0 0 50px 25px rgb(96 165 250), 50px 0 50px 25px rgb(232 121 249), 130px 0 80px 40px var(--fade-color); animation: slide 108s linear infinite; animation-delay: -432s; }
+.rainbow:nth-child(21) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(232 121 249), 0 0 50px 25px rgb(94 234 212), 50px 0 50px 25px rgb(96 165 250), 130px 0 80px 40px var(--fade-color); animation: slide 86.4s linear infinite; animation-delay: -453.6s; }
+.rainbow:nth-child(22) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(96 165 250), 0 0 50px 25px rgb(232 121 249), 50px 0 50px 25px rgb(94 234 212), 130px 0 80px 40px var(--fade-color); animation: slide 64.8s linear infinite; animation-delay: -475.2s; }
+.rainbow:nth-child(23) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(94 234 212), 0 0 50px 25px rgb(232 121 249), 50px 0 50px 25px rgb(96 165 250), 130px 0 80px 40px var(--fade-color); animation: slide 43.2s linear infinite; animation-delay: -496.8s; }
+.rainbow:nth-child(24) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(232 121 249), 0 0 50px 25px rgb(96 165 250), 50px 0 50px 25px rgb(94 234 212), 130px 0 80px 40px var(--fade-color); animation: slide 21.6s linear infinite; animation-delay: -518.4s; }
+.rainbow:nth-child(25) { box-shadow: -130px 0 80px 40px var(--fade-color), -50px 0 50px 25px rgb(96 165 250), 0 0 50px 25px rgb(94 234 212), 50px 0 50px 25px rgb(232 121 249), 130px 0 80px 40px var(--fade-color); animation: slide 540s linear infinite; animation-delay: -540s; }
+
+@keyframes slide {
+  from {
+    right: -25vw;
+  }
+  to {
+    right: 125vw;
+  }
+}
+
+/* Fade elements for gradual merge into background */
+.fadeBottom {
+  box-shadow: 0 0 50vh 40vh var(--fade-color);
+  width: 100%;
+  height: 0;
+  bottom: 0;
+  left: 0;
+  position: absolute;
+  pointer-events: none;
+}
+
+.fadeLeft {
+  box-shadow: 0 0 35vw 25vw var(--fade-color);
+  width: 0;
+  height: 100%;
+  bottom: 0;
+  left: 0;
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Light theme - fade to white */
+.light {
+  --fade-color: rgb(255 255 255);
+}
+
+/* Dark theme - fade to zinc-900 */
+.dark {
+  --fade-color: rgb(24 24 27);
+}

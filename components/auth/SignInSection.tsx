@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { authClient } from "@/lib/auth-client";
+import styles from "./RainbowAnimation.module.css";
 
 const EXAMPLE_IMAGES = [
   "/example1.png",
@@ -13,6 +14,7 @@ const EXAMPLE_IMAGES = [
 
 export function SignInSection() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -20,6 +22,24 @@ export function SignInSection() {
     }, 3000); // Change image every 3 seconds
 
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    // Detect dark mode
+    const checkDarkMode = () => {
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    };
+
+    checkDarkMode();
+
+    // Watch for theme changes
+    const observer = new MutationObserver(checkDarkMode);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+
+    return () => observer.disconnect();
   }, []);
 
   const handleSignIn = async () => {
@@ -30,8 +50,17 @@ export function SignInSection() {
   };
 
   return (
-    <section className="flex flex-col gap-5 rounded-lg bg-white p-4 sm:p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
-      <div className="grid md:grid-cols-3 gap-8 items-center">
+    <section className="relative flex flex-col gap-5 rounded-lg bg-white p-4 sm:p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700 overflow-hidden">
+      {/* Rainbow animation background */}
+      <div className={`${styles.animationContainer} ${isDarkMode ? styles.dark : styles.light}`}>
+        {Array.from({ length: 25 }).map((_, i) => (
+          <div key={i} className={styles.rainbow} />
+        ))}
+        <div className={styles.fadeBottom} />
+        <div className={styles.fadeLeft} />
+      </div>
+
+      <div className="relative z-10 grid md:grid-cols-3 gap-8 items-center">
         {/* Left side: Caption and Button */}
         <div className="flex flex-col justify-center items-center space-y-10 md:col-span-2">
           <h2 className="font-slab text-xl font-semibold text-zinc-800 text-center transition-colors dark:text-zinc-100">
