@@ -14,4 +14,5 @@ export type UserSummary = {
   likes: number;
   avatarUrl: string;
   tweetsOverTime: UserTweetsOverTimePoint[];
+  accountId: string; // Twitter account ID for linking to auth
 };

@@ -1262,6 +1262,7 @@ export const getUserSummary = async (
     likes,
     avatarUrl,
     tweetsOverTime,
+    accountId: primaryAccount, // Twitter account ID from tweet data
   };
 };
 

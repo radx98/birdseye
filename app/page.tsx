@@ -1,18 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
-import {
-  ClustersSection,
-  ClusterScatterSection,
-  SelectUserPanel,
-  UserExplorerProvider,
-  YearlySummariesSection,
-  TweetsOverTimeSection,
-  OntologySection,
-  ThreadsSection,
-  StatusPanel,
-} from "@/components/user-explorer";
 import ThemeSwitch from "@/components/theme-switch";
 import { listUsers } from "@/lib/storage-data";
+import { MainContent } from "@/components/MainContent";
 
 export default async function Home() {
   let users: string[] = [];
@@ -118,30 +108,7 @@ export default async function Home() {
           </div>
         </section>
 
-        <UserExplorerProvider users={users}>
-          <>
-            <StatusPanel />
-            <section className="flex flex-col gap-6 rounded-lg bg-white p-4 sm:p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
-              <div>
-                <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
-                  Select a User
-                </h2>
-                <p className="mt-2 text-sm text-zinc-600 transition-colors dark:text-zinc-400">
-                  Choose a user to explore. As soon as you pick someone, Birdseye loads clusters, timelines, and
-                  threads tailored to that account.
-                </p>
-              </div>
-              <SelectUserPanel />
-            </section>
-
-            <ClustersSection />
-            <ClusterScatterSection />
-            <YearlySummariesSection />
-            <OntologySection />
-            <TweetsOverTimeSection />
-            <ThreadsSection />
-          </>
-        </UserExplorerProvider>
+        <MainContent users={users} />
 
         <footer className="mt-12 flex flex-row flex-wrap items-center justify-between gap-6 border-t border-zinc-200 px-4 pt-8 text-sm text-zinc-600 transition-colors sm:px-8 dark:border-zinc-800 dark:text-zinc-400">
           <a
