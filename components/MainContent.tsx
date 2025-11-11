@@ -119,11 +119,8 @@ export function MainContent({ users }: MainContentProps) {
         <section className="flex flex-col gap-6 rounded-lg bg-white p-4 sm:p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
           <div>
             <h2 className="font-slab text-lg font-semibold text-zinc-800 transition-colors dark:text-zinc-100">
-              Your Twitter Analysis
+              User
             </h2>
-            <p className="mt-2 text-sm text-zinc-600 transition-colors dark:text-zinc-400">
-              Explore your Twitter history analysis below.
-            </p>
           </div>
           <SelectUserPanel />
         </section>
