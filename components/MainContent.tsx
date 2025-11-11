@@ -33,7 +33,7 @@ export function MainContent({ users }: MainContentProps) {
 
   useEffect(() => {
     if (session?.user) {
-      // Check if user is admin
+      // Check if user is admin and get username from Community Archive
       const checkAdmin = async () => {
         try {
           const response = await fetch("/api/auth/is-admin");
@@ -45,21 +45,10 @@ export function MainContent({ users }: MainContentProps) {
           console.log("Admin check response:", data);
           setIsAdmin(data.isAdmin);
           setUserTwitterId(data.twitterId);
+          setTwitterUsername(data.username);
 
           if (!data.twitterId) {
             console.warn("No Twitter ID found in session - user may not have linked Twitter account");
-          } else {
-            // Fetch the Twitter username from the Twitter ID
-            const usernameResponse = await fetch("/api/auth/find-username", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ twitterId: data.twitterId }),
-            });
-
-            if (usernameResponse.ok) {
-              const usernameData = await usernameResponse.json();
-              setTwitterUsername(usernameData.username);
-            }
           }
         } catch (error) {
           console.error("Failed to check admin status:", error);
