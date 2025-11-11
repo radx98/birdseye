@@ -127,6 +127,7 @@ export default async function Home() {
               alt=""
               width={22}
               height={22}
+              style={{ height: "auto" }}
               className="h-[22px] w-auto transition dark:invert"
             />
           </a>
