@@ -124,13 +124,35 @@ export function GetStartedSection({ onGetAnalysis, twitterUsername, accountId, e
         method: "POST",
       });
 
+      console.log("Checkout response status:", response.status, response.statusText);
+
       if (response.ok) {
         const data = await response.json();
+        console.log("Checkout data:", data);
         if (data.url) {
           window.location.href = data.url;
+        } else {
+          console.error("No URL in response:", data);
+          setRedirectingToCheckout(false);
         }
       } else {
-        console.error("Failed to create checkout session");
+        // Try to get the error details
+        const responseText = await response.text();
+        console.error("Failed to create checkout session:", {
+          status: response.status,
+          statusText: response.statusText,
+          responseText: responseText,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+
+        // Try to parse as JSON
+        try {
+          const errorData = JSON.parse(responseText);
+          console.error("Error data:", errorData);
+        } catch (e) {
+          console.error("Could not parse error response as JSON");
+        }
+
         setRedirectingToCheckout(false);
       }
     } catch (error) {
