@@ -15,17 +15,33 @@ import {
   ThreadsSection,
   StatusPanel,
 } from "@/components/user-explorer";
+import { AdminPreviewProvider, useAdminPreview } from "./AdminPreviewContext";
+import { AdminPreviewPanel } from "./AdminPreviewPanel";
 
 interface MainContentProps {
   users: string[];
 }
 
-export function MainContent({ users }: MainContentProps) {
+function MainContentInner({ users }: MainContentProps) {
   const { data: session, isPending } = useSession();
   const [showAnalysis, setShowAnalysis] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [realIsAdmin, setRealIsAdmin] = useState(false);
   const [userTwitterId, setUserTwitterId] = useState<string | null>(null);
   const [twitterUsername, setTwitterUsername] = useState<string | null>(null);
+  const [realExistsInCA, setRealExistsInCA] = useState<boolean | null>(null);
+  const [realHasPaid, setRealHasPaid] = useState<boolean | null>(null);
+
+  const adminPreview = useAdminPreview();
+
+  // Computed effective values based on preview toggles
+  const isAdmin = adminPreview.getEffectiveIsAdmin(realIsAdmin);
+  const effectiveExistsInCA = adminPreview.getEffectiveInCaDb(realExistsInCA ?? false);
+  const effectiveHasPaid = adminPreview.getEffectiveHasPaid(realHasPaid ?? false);
+  const shouldShowAdminId1Data = adminPreview.shouldShowAdminId1Data(realIsAdmin, realExistsInCA ?? false);
+
+  // If admin is viewing as ADMIN_ID_1, we need to get that Twitter ID
+  const [adminId1TwitterId, setAdminId1TwitterId] = useState<string | null>(null);
+  const effectiveTwitterId = shouldShowAdminId1Data ? adminId1TwitterId : userTwitterId;
 
   const handleLogout = async () => {
     await authClient.signOut();
@@ -57,7 +73,7 @@ export function MainContent({ users }: MainContentProps) {
           }
           const data = await response.json();
           console.log("Admin check response:", data);
-          setIsAdmin(data.isAdmin);
+          setRealIsAdmin(data.isAdmin);
           setUserTwitterId(data.twitterId);
           setTwitterUsername(data.username);
 
@@ -65,15 +81,37 @@ export function MainContent({ users }: MainContentProps) {
             console.warn("No Twitter ID found in session - user may not have linked Twitter account");
           }
 
+          // Check if user exists in CA DB
+          if (data.twitterId) {
+            const caResponse = await fetch("/api/auth/check-community-archive", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ accountId: data.twitterId }),
+            });
+            if (caResponse.ok) {
+              const caData = await caResponse.json();
+              setRealExistsInCA(caData.exists);
+            }
+          }
+
           // If user is not admin, check if they have paid
           if (!data.isAdmin) {
             const paymentResponse = await fetch("/api/auth/check-payment");
             if (paymentResponse.ok) {
               const paymentData = await paymentResponse.json();
+              setRealHasPaid(paymentData.hasPaid);
               // If user has paid, automatically show analysis
               if (paymentData.hasPaid) {
                 setShowAnalysis(true);
               }
+            }
+          } else {
+            // For admins, fetch ADMIN_ID_1 from environment to use for preview
+            // We'll need to get this from the server
+            const adminIdResponse = await fetch("/api/auth/get-admin-id-1");
+            if (adminIdResponse.ok) {
+              const adminIdData = await adminIdResponse.json();
+              setAdminId1TwitterId(adminIdData.adminId1);
             }
           }
         } catch (error) {
@@ -83,12 +121,32 @@ export function MainContent({ users }: MainContentProps) {
       void checkAdmin();
     } else {
       // Reset state when logged out
-      setIsAdmin(false);
+      setRealIsAdmin(false);
       setUserTwitterId(null);
       setTwitterUsername(null);
+      setRealExistsInCA(null);
+      setRealHasPaid(null);
       setShowAnalysis(false);
     }
   }, [session]);
+
+  // Update showAnalysis when admin preview toggles change
+  useEffect(() => {
+    // Only apply this logic when user is an admin using preview mode
+    if (!realIsAdmin) return;
+
+    // If showing as admin (isAdmin toggle on), don't auto-show analysis
+    if (isAdmin) return;
+
+    // If not showing as admin and effectiveExistsInCA is true and effectiveHasPaid is true
+    // then automatically show the analysis
+    if (effectiveExistsInCA && effectiveHasPaid) {
+      setShowAnalysis(true);
+    } else {
+      // If they toggle paid off or CA DB off, hide the analysis
+      setShowAnalysis(false);
+    }
+  }, [realIsAdmin, isAdmin, effectiveExistsInCA, effectiveHasPaid]);
 
   // Loading state
   if (isPending) {
@@ -104,11 +162,12 @@ export function MainContent({ users }: MainContentProps) {
     return <SignInSection />;
   }
 
-  // Authenticated and is admin - show full admin interface
+  // Authenticated and is admin - show full admin interface or preview mode
   if (isAdmin) {
     return (
       <UserExplorerProvider users={users}>
         <>
+          {realIsAdmin && <AdminPreviewPanel />}
           <StatusPanel />
           <section className="flex flex-col gap-6 rounded-lg bg-white p-4 sm:p-8 ring-1 ring-zinc-200 transition-colors dark:bg-zinc-900 dark:ring-zinc-700">
             <div>
@@ -144,16 +203,29 @@ export function MainContent({ users }: MainContentProps) {
 
   // Authenticated but not admin - show get started or user-specific data
   if (!showAnalysis) {
-    return <GetStartedSection onGetAnalysis={() => setShowAnalysis(true)} twitterUsername={twitterUsername} accountId={userTwitterId} />;
+    // Pass effective values to GetStartedSection for proper preview
+    return (
+      <>
+        {realIsAdmin && <AdminPreviewPanel />}
+        <GetStartedSection
+          onGetAnalysis={() => setShowAnalysis(true)}
+          twitterUsername={twitterUsername}
+          accountId={effectiveTwitterId}
+          existsInCA={effectiveExistsInCA}
+          hasPaid={effectiveHasPaid}
+        />
+      </>
+    );
   }
 
   // User has clicked "Get the Analysis" - show their data
   // We need to find their username based on their Twitter ID
-  console.log("Loading user data with Twitter ID:", userTwitterId);
+  console.log("Loading user data with Twitter ID:", effectiveTwitterId);
 
   return (
-    <UserExplorerProvider users={users} singleUserMode={true} userTwitterId={userTwitterId}>
+    <UserExplorerProvider users={users} singleUserMode={true} userTwitterId={effectiveTwitterId}>
       <>
+        {realIsAdmin && <AdminPreviewPanel />}
         <StatusPanel />
 
         {/* User info section - no dropdown, just show current user */}
@@ -180,5 +252,13 @@ export function MainContent({ users }: MainContentProps) {
         <ThreadsSection />
       </>
     </UserExplorerProvider>
+  );
+}
+
+export function MainContent({ users }: MainContentProps) {
+  return (
+    <AdminPreviewProvider>
+      <MainContentInner users={users} />
+    </AdminPreviewProvider>
   );
 }
