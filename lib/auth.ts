@@ -17,13 +17,16 @@ const getAuthBaseURL = () => {
   return "http://localhost:3000";
 };
 
+// Export pool for direct database access
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === "production"
+    ? { rejectUnauthorized: false } // Enable SSL for production (Supabase requires it)
+    : false, // Disable SSL for local development
+});
+
 export const auth = betterAuth({
-  database: new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === "production"
-      ? { rejectUnauthorized: false } // Enable SSL for production (Supabase requires it)
-      : false, // Disable SSL for local development
-  }),
+  database: pool,
   emailAndPassword: {
     enabled: false, // Disable email/password auth
   },

@@ -23,6 +23,9 @@ export function GetStartedSection({ onGetAnalysis, twitterUsername, accountId }:
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [existsInCA, setExistsInCA] = useState<boolean | null>(null);
   const [checkingCA, setCheckingCA] = useState(true);
+  const [hasPaid, setHasPaid] = useState<boolean | null>(null);
+  const [checkingPayment, setCheckingPayment] = useState(true);
+  const [redirectingToCheckout, setRedirectingToCheckout] = useState(false);
 
   const handleLogout = async () => {
     await authClient.signOut();
@@ -70,6 +73,57 @@ export function GetStartedSection({ onGetAnalysis, twitterUsername, accountId }:
   }, [accountId]);
 
   useEffect(() => {
+    // Check if user has paid
+    const checkPayment = async () => {
+      try {
+        const response = await fetch("/api/auth/check-payment");
+        if (response.ok) {
+          const data = await response.json();
+          setHasPaid(data.hasPaid);
+        } else {
+          setHasPaid(false);
+        }
+      } catch (error) {
+        console.error("Failed to check payment:", error);
+        setHasPaid(false);
+      } finally {
+        setCheckingPayment(false);
+      }
+    };
+
+    void checkPayment();
+  }, []);
+
+  const handleGetAnalysis = async () => {
+    // If user has paid, proceed with loading data
+    if (hasPaid) {
+      onGetAnalysis();
+      return;
+    }
+
+    // Otherwise, redirect to Stripe checkout
+    setRedirectingToCheckout(true);
+    try {
+      const response = await fetch("/api/checkout_sessions", {
+        method: "POST",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.url) {
+          window.location.href = data.url;
+        }
+      } else {
+        console.error("Failed to create checkout session");
+        setRedirectingToCheckout(false);
+      }
+    } catch (error) {
+      console.error("Checkout error:", error);
+      setRedirectingToCheckout(false);
+    }
+  };
+
+  useEffect(() => {
     // Detect dark mode
     const checkDarkMode = () => {
       setIsDarkMode(document.documentElement.classList.contains('dark'));
@@ -101,7 +155,7 @@ export function GetStartedSection({ onGetAnalysis, twitterUsername, accountId }:
       <div className="relative z-10 grid md:grid-cols-3 gap-8 items-center">
         {/* Left side: Caption and Button */}
         <div className="flex flex-col justify-center items-center space-y-10 md:col-span-2">
-          {checkingCA ? (
+          {checkingCA || checkingPayment ? (
             // Loading state
             <div className="flex flex-col items-center space-y-4">
               {twitterUsername && (
@@ -146,10 +200,11 @@ export function GetStartedSection({ onGetAnalysis, twitterUsername, accountId }:
               </div>
               <div className="flex flex-col items-center space-y-3">
                 <button
-                  onClick={onGetAnalysis}
-                  className="cursor-pointer rounded-lg border-2 border-zinc-900 bg-zinc-900 px-8 py-3 text-base font-semibold text-white transition-colors hover:bg-zinc-800 hover:border-zinc-800 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 dark:hover:border-zinc-200"
+                  onClick={handleGetAnalysis}
+                  disabled={redirectingToCheckout}
+                  className="cursor-pointer rounded-lg border-2 border-zinc-900 bg-zinc-900 px-8 py-3 text-base font-semibold text-white transition-colors hover:bg-zinc-800 hover:border-zinc-800 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 dark:hover:border-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Get the Analysis
+                  {redirectingToCheckout ? "Redirecting to checkout..." : "Get the Analysis"}
                 </button>
                 <button
                   onClick={handleLogout}
