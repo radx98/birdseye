@@ -16,15 +16,17 @@ interface GetStartedSectionProps {
   onGetAnalysis: () => void;
   twitterUsername?: string | null;
   accountId?: string | null;
+  existsInCA?: boolean | null;
+  hasPaid?: boolean | null;
 }
 
-export function GetStartedSection({ onGetAnalysis, twitterUsername, accountId }: GetStartedSectionProps) {
+export function GetStartedSection({ onGetAnalysis, twitterUsername, accountId, existsInCA: existsInCAProp, hasPaid: hasPaidProp }: GetStartedSectionProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [existsInCA, setExistsInCA] = useState<boolean | null>(null);
-  const [checkingCA, setCheckingCA] = useState(true);
-  const [hasPaid, setHasPaid] = useState<boolean | null>(null);
-  const [checkingPayment, setCheckingPayment] = useState(true);
+  const [existsInCA, setExistsInCA] = useState<boolean | null>(existsInCAProp ?? null);
+  const [checkingCA, setCheckingCA] = useState(existsInCAProp === null || existsInCAProp === undefined);
+  const [hasPaid, setHasPaid] = useState<boolean | null>(hasPaidProp ?? null);
+  const [checkingPayment, setCheckingPayment] = useState(hasPaidProp === null || hasPaidProp === undefined);
   const [redirectingToCheckout, setRedirectingToCheckout] = useState(false);
 
   const handleLogout = async () => {
@@ -40,6 +42,13 @@ export function GetStartedSection({ onGetAnalysis, twitterUsername, accountId }:
   }, []);
 
   useEffect(() => {
+    // If props are provided (from admin preview), use them and skip fetching
+    if (existsInCAProp !== null && existsInCAProp !== undefined) {
+      setExistsInCA(existsInCAProp);
+      setCheckingCA(false);
+      return;
+    }
+
     // Check if user exists in Community Archive
     const checkCommunityArchive = async () => {
       if (!accountId) {
@@ -70,9 +79,16 @@ export function GetStartedSection({ onGetAnalysis, twitterUsername, accountId }:
     };
 
     void checkCommunityArchive();
-  }, [accountId]);
+  }, [accountId, existsInCAProp]);
 
   useEffect(() => {
+    // If props are provided (from admin preview), use them and skip fetching
+    if (hasPaidProp !== null && hasPaidProp !== undefined) {
+      setHasPaid(hasPaidProp);
+      setCheckingPayment(false);
+      return;
+    }
+
     // Check if user has paid
     const checkPayment = async () => {
       try {
@@ -92,7 +108,7 @@ export function GetStartedSection({ onGetAnalysis, twitterUsername, accountId }:
     };
 
     void checkPayment();
-  }, []);
+  }, [hasPaidProp]);
 
   const handleGetAnalysis = async () => {
     // If user has paid, proceed with loading data
