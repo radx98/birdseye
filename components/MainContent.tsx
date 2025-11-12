@@ -32,6 +32,20 @@ export function MainContent({ users }: MainContentProps) {
   };
 
   useEffect(() => {
+    // Check for payment success in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const paymentSuccess = urlParams.get("payment_success");
+
+    if (paymentSuccess === "true") {
+      // Remove query params from URL
+      window.history.replaceState({}, "", window.location.pathname);
+
+      // Auto-load analysis after successful payment
+      setShowAnalysis(true);
+    }
+  }, []);
+
+  useEffect(() => {
     if (session?.user) {
       // Check if user is admin and get username from Community Archive
       const checkAdmin = async () => {
@@ -49,6 +63,18 @@ export function MainContent({ users }: MainContentProps) {
 
           if (!data.twitterId) {
             console.warn("No Twitter ID found in session - user may not have linked Twitter account");
+          }
+
+          // If user is not admin, check if they have paid
+          if (!data.isAdmin) {
+            const paymentResponse = await fetch("/api/auth/check-payment");
+            if (paymentResponse.ok) {
+              const paymentData = await paymentResponse.json();
+              // If user has paid, automatically show analysis
+              if (paymentData.hasPaid) {
+                setShowAnalysis(true);
+              }
+            }
           }
         } catch (error) {
           console.error("Failed to check admin status:", error);
